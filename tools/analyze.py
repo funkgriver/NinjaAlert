@@ -94,9 +94,12 @@ def main() -> int:
                 items = con.execute("SELECT COUNT(DISTINCT key) FROM ticks").fetchone()[0]
                 newest = con.execute("SELECT MAX(ts) FROM ticks").fetchone()[0]
                 con.close()
-                summary["history"][game] = {
-                    "ticks": ticks, "items": items,
-                    "newest_age_min": round((time.time() - (newest or 0)) / 60.0, 1)}
+                if ticks == 0 or newest is None:
+                    summary["history"][game] = {"ticks": 0, "items": 0, "newest_age_min": None}
+                else:
+                    summary["history"][game] = {
+                        "ticks": ticks, "items": items,
+                        "newest_age_min": round((time.time() - newest) / 60.0, 1)}
             except sqlite3.Error as exc:
                 summary["history"][game] = {"error": str(exc)}
 
@@ -118,6 +121,8 @@ def main() -> int:
     for game, st in summary["history"].items():
         if "error" in st:
             print(f"history {game}: {st['error']}")
+        elif st.get("newest_age_min") is None:
+            print(f"history {game}: empty (game disabled or not yet polled)")
         else:
             print(f"history {game}: {st['ticks']} ticks / {st['items']} items "
                   f"(newest {st['newest_age_min']} min ago)")
