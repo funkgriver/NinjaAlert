@@ -1,0 +1,213 @@
+"""NinjaAlert - background polling worker (QThread), one instance per game.
+
+Runs one fetch cycle every poll_interval_minutes for its game:
+  refresh leagues -> resolve league -> fetch each watched category ->
+  emit snapshot batches -> sleep (interruptible).
+
+Signals are emitted from the worker thread; all Qt widgets must only be
+touched on the receiving (GUI) side, which the main module wires up.
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import time
+
+from PyQt6.QtCore import QThread, pyqtSignal
+
+from api_client import (
+    UNCHANGED,
+    ApiError,
+    CategoryUnavailable,
+    NinjaApiClient,
+    RateLimited,
+)
+from categories import CATEGORIES
+
+log = logging.getLogger("ninjaalert.poller")
+
+RATE_LIMIT_EXTRA_WAIT_SECONDS = 10 * 60   # extra cooldown after HTTP 429
+LEAGUE_REFRESH_SECONDS = 6 * 3600
+
+
+class PollWorker(QThread):
+    # fetched quote batch + fetch context (analyzer input)
+    snapshot = pyqtSignal(object, object)          # list[ItemQuote], FetchMeta
+    leagues_found = pyqtSignal(str, list)          # game, [league ids] (index 0 = current)
+    cycle_begin = pyqtSignal(str)                  # "poe1 · Allflame"
+    category_done = pyqtSignal(str, int)           # label, quote count
+    note = pyqtSignal(str)                         # transient status line
+    cycle_error = pyqtSignal(str)                  # human-readable failure
+    state_changed = pyqtSignal(str)                # fetching|waiting|paused|disabled|error
+
+    def __init__(self, client: NinjaApiClient, config, game: str, parent=None) -> None:
+        super().__init__(parent)
+        self._client = client
+        self._cfg = config
+        self.game = game
+        self._lock = threading.Lock()
+        self._stop_flag = False
+        self._paused = False
+        self._wake = threading.Event()   # interruptible sleep / check-now / reconfig
+        self._last_leagues_refresh = 0.0
+        self._unavailable_warned: set = set()
+        self._last_current_league: str = ""
+
+    # --------------------------------------------------- control (GUI thread)
+    def apply_config(self, config) -> None:
+        with self._lock:
+            self._cfg = config
+        self._unavailable_warned.clear()
+        self._wake.set()  # start a fresh cycle soon with the new settings
+
+    def pause(self, on: bool) -> None:
+        self._paused = bool(on)
+        self.state_changed.emit("paused" if on else "starting")
+        self._wake.set()
+
+    def check_now(self) -> None:
+        self._wake.set()
+
+    def stop(self) -> None:
+        self._stop_flag = True
+        self._wake.set()
+        self.wait(8000)
+
+    @property
+    def current_config(self):
+        with self._lock:
+            return self._cfg
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
+    # ------------------------------------------------------------ worker loop
+    def run(self) -> None:
+        log.info("poller thread started (%s)", self.game)
+        while not self._stop_flag:
+            if self._paused:
+                self.state_changed.emit("paused")
+                self._sleep_until_wake(poll_seconds=3600.0)
+                continue
+            try:
+                self._run_cycle()
+            except Exception:  # never let the thread die
+                log.exception("unexpected error in poll cycle (%s)", self.game)
+                self.cycle_error.emit("unexpected error (see ninjaalert.log)")
+                self.state_changed.emit("error")
+                self._sleep_interval()
+        log.info("poller thread stopped (%s)", self.game)
+
+    def _run_cycle(self) -> None:
+        cfg = self.current_config
+        gc = cfg.game_cfg(self.game)
+
+        if not gc.enabled:
+            self.state_changed.emit("disabled")
+            self._sleep_until_wake(poll_seconds=600.0)
+            return
+
+        leagues = self._ensure_leagues(self.game)
+        if leagues is None:
+            self.cycle_error.emit(f"could not fetch league list for {self.game}")
+            self.state_changed.emit("error")
+            self._sleep_interval()
+            return
+
+        league_ids = [l.id for l in leagues]
+        self.leagues_found.emit(self.game, league_ids)
+        current = league_ids[0]
+        if self._last_current_league != current:
+            if self._last_current_league:
+                self.note.emit(f"New league detected: {current}")
+            self._last_current_league = current
+
+        league = current if gc.league_auto or not gc.league else gc.league
+        self.cycle_begin.emit(f"{self.game} · {league}")
+        self.state_changed.emit("fetching")
+
+        cats = [c for c in cfg.watched(self.game) if c in CATEGORIES[self.game]]
+        if not cats:
+            self.note.emit("No categories selected - nothing to watch")
+            self.state_changed.emit("waiting")
+            self._sleep_interval()
+            return
+
+        had_error = False
+        for cat_id in cats:
+            if self._stop_flag or self._paused:
+                return
+            label = CATEGORIES[self.game][cat_id].label
+            self.note.emit(f"Fetching {label}…")
+            try:
+                result, meta = self._client.fetch_category(self.game, league, cat_id)
+            except CategoryUnavailable as exc:
+                if cat_id not in self._unavailable_warned:
+                    self._unavailable_warned.add(cat_id)
+                    log.warning("category unavailable: %s", exc)
+                    self.note.emit(f"{label}: not available in this league")
+                continue
+            except RateLimited as exc:
+                log.warning("rate limited: %s", exc)
+                self.cycle_error.emit("poe.ninja rate limit hit - backing off")
+                self.state_changed.emit("error")
+                self._sleep_interval(extra_seconds=RATE_LIMIT_EXTRA_WAIT_SECONDS)
+                return
+            except ApiError as exc:
+                log.error("fetch failed: %s", exc)
+                self.cycle_error.emit(str(exc))
+                self.state_changed.emit("error")
+                had_error = True
+                break  # skip the rest of the cycle; retry next interval
+
+            if result is UNCHANGED:
+                self.category_done.emit(label, -1)  # -1 = not modified
+                continue
+            quotes: List = result  # type: ignore[assignment]
+            self.snapshot.emit(quotes, meta)
+            self.category_done.emit(label, len(quotes))
+
+        if not had_error:
+            self.state_changed.emit("waiting")
+            self._sleep_interval()
+        else:
+            self._sleep_interval()
+
+    def _ensure_leagues(self, game: str):
+        age_ok = (time.time() - self._last_leagues_refresh) < LEAGUE_REFRESH_SECONDS
+        if age_ok:
+            try:
+                return self._client.get_leagues(game)  # cached inside client
+            except ApiError as exc:
+                log.warning("league refresh failed (using cache): %s", exc)
+                cached = self._client._leagues.get(game)
+                if cached:
+                    return cached
+                return None
+        try:
+            leagues = self._client.get_leagues(game, force=True)
+            self._last_leagues_refresh = time.time()
+            return leagues
+        except ApiError as exc:
+            log.warning("league fetch failed: %s", exc)
+            return None
+
+    # ------------------------------------------------------------ sleeping
+    def _sleep_interval(self, extra_seconds: float = 0.0) -> None:
+        interval = max(self.current_config.game_cfg(self.game).poll_interval_minutes, 1.0) * 60.0
+        self._sleep_until_wake(poll_seconds=interval + extra_seconds)
+
+    def _sleep_until_wake(self, poll_seconds: float) -> None:
+        """Sleep in short slices; wake early on stop/pause/check-now/reconfig."""
+        deadline = time.monotonic() + max(poll_seconds, 1.0)
+        while not self._stop_flag:
+            if self._wake.is_set():
+                self._wake.clear()
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            if self._paused:
+                return
+            time.sleep(min(1.0, remaining))

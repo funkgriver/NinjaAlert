@@ -1,0 +1,3933 @@
+{
+ "core": {
+  "items": [
+   {
+    "id": "divine",
+    "name": "Divine Orb",
+    "image": "/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lNb2RWYWx1ZXMiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/2986e220b3/CurrencyModValues.png",
+    "category": "Currency",
+    "detailsId": "divine-orb"
+   },
+   {
+    "id": "exalted",
+    "name": "Exalted Orb",
+    "image": "/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lBZGRNb2RUb1JhcmUiLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/ad7c366789/CurrencyAddModToRare.png",
+    "category": "Currency",
+    "detailsId": "exalted-orb"
+   },
+   {
+    "id": "chaos",
+    "name": "Chaos Orb",
+    "image": "/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ3VycmVuY3lSZXJvbGxSYXJlIiwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/c0ca392a78/CurrencyRerollRare.png",
+    "category": "Currency",
+    "detailsId": "chaos-orb"
+   }
+  ],
+  "rates": {
+   "exalted": 667.3,
+   "chaos": 9.52
+  },
+  "primary": "divine",
+  "secondary": "chaos"
+ },
+ "lines": [
+  {
+   "id": 753,
+   "itemId": "Winter's Bite Glass Shank",
+   "detailsId": "winters-bite-glass-shank",
+   "name": "Winter's Bite",
+   "baseType": "Glass Shank",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9EYWdnZXJzL1VuaXF1ZXMvTmV2ZXJtZWx0IiwidyI6MSwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/a5a4d70a8e/Nevermelt.png",
+   "flavourText": "Nothing stabs colder than pure hatred.",
+   "levelRequired": 0,
+   "category": "[Dagger]",
+   "primaryValue": 44856000,
+   "listingCount": 1,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 5.27,
+    "data": [
+     null,
+     0,
+     2.5,
+     null,
+     7.98,
+     null,
+     5.27
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "No [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds (8-10) to (15-18) [Cold|Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_cold_damage",
+      "local_maximum_added_cold_damage"
+     ]
+    },
+    {
+     "text": "[Freeze|Freezes] Enemies that are on Full Life",
+     "optional": false,
+     "statIds": [
+      "local_always_freeze_on_full_life"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Cold|Cold] Damage: (8-10)-(15-18)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 15%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.55",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 732,
+   "itemId": "Bluetongue Shortsword",
+   "detailsId": "bluetongue-shortsword",
+   "name": "Bluetongue",
+   "baseType": "Shortsword",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kU3dvcmRzL1VuaXF1ZXMvQmx1ZXRvbmd1ZSIsInciOjIsImgiOjMsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/3fdac0787b/Bluetongue.png",
+   "flavourText": "War inevitably takes an untold toll on the soul.",
+   "levelRequired": 0,
+   "category": "[Sword|One Hand Sword]",
+   "primaryValue": 2100,
+   "listingCount": 2,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     0
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds (4-6) to (7-10) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "10% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "Lose 3 Mana per enemy killed",
+     "optional": false,
+     "statIds": [
+      "base_mana_gained_on_enemy_death"
+     ]
+    },
+    {
+     "text": "100% increased [Attack|Attack] Damage while not on [LowMana|Low Mana]",
+     "optional": false,
+     "statIds": [
+      "attack_damage_+%_while_not_on_low_mana"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (10-12)-(16-19)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.71",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 727,
+   "itemId": "Redbeak Shortsword",
+   "detailsId": "redbeak-shortsword",
+   "name": "Redbeak",
+   "baseType": "Shortsword",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kU3dvcmRzL1VuaXF1ZXMvUmVkYmVhayIsInciOjIsImgiOjMsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/33c430b8b4/Redbeak.png",
+   "flavourText": "As battle calms, blood turns to rust.",
+   "levelRequired": 0,
+   "category": "[Sword|One Hand Sword]",
+   "primaryValue": 1680,
+   "listingCount": 4,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 1.24,
+    "data": [
+     null,
+     0,
+     -23.67,
+     null,
+     1.24,
+     null,
+     1.24
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds (4-6) to (7-10) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "10% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "Gain 3 Life per enemy killed",
+     "optional": false,
+     "statIds": [
+      "base_life_gained_on_enemy_death"
+     ]
+    },
+    {
+     "text": "100% increased [Attack|Attack] Damage while on [LowLife|Low Life]",
+     "optional": false,
+     "statIds": [
+      "attack_damage_+%_when_on_low_life"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (10-12)-(16-19)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.71",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 50",
+     "optional": true
+    }
+   ]
+  },
+  {
+   "id": 729,
+   "itemId": "Runeseeker's Call Runemastered Runic Fork",
+   "detailsId": "runeseekers-call-runemastered-runic-fork",
+   "name": "Runeseeker's Call",
+   "baseType": "Runemastered Runic Fork",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9XYW5kcy9VbmlxdWVzL1J1bmljRGl2aW5lciIsInciOjIsImgiOjMsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/df89e6455f/RunicDiviner.png",
+   "flavourText": "Smithed from ancient metal \r\nwrought from the very stars.\r\nIt is a means to call upon them, \r\nfor one capable of wielding it.",
+   "levelRequired": 84,
+   "category": "[Wand]",
+   "primaryValue": 1397,
+   "listingCount": 41,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 9.23,
+    "data": [
+     null,
+     0,
+     13.23,
+     null,
+     5.55,
+     null,
+     9.23
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(30-50)% increased Mana Regeneration Rate",
+     "optional": true,
+     "statIds": [
+      "mana_regeneration_rate_+%"
+     ]
+    },
+    {
+     "text": "+300 to maximum [Ward|Runic Ward]",
+     "optional": true,
+     "statIds": [
+      "base_maximum_ward"
+     ]
+    },
+    {
+     "text": "(30-50)% chance for [Spell] Skills to fire 2 additional [Projectile|Projectiles]",
+     "optional": true,
+     "statIds": [
+      "spell_skills_fire_2_additional_projectiles_final_chance_%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "Only [Rune|Runes] can be Socketed in this item",
+     "optional": false,
+     "statIds": [
+      "local_can_only_socket_runes"
+     ]
+    },
+    {
+     "text": "200% increased effect of Socketed [Rune|Runes]",
+     "optional": false,
+     "statIds": [
+      "local_rune_effect_+%"
+     ]
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 114",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (18-20) The Stars Answer",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 730,
+   "itemId": "Runeseeker's Call Runic Fork",
+   "detailsId": "runeseekers-call-runic-fork",
+   "name": "Runeseeker's Call",
+   "baseType": "Runic Fork",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9XYW5kcy9VbmlxdWVzL1J1bmljRGl2aW5lciIsInciOjIsImgiOjMsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/df89e6455f/RunicDiviner.png",
+   "flavourText": "Smithed from ancient metal \r\nwrought from the very stars.\r\nIt is a means to call upon them, \r\nfor one capable of wielding it.",
+   "levelRequired": 90,
+   "category": "[Wand]",
+   "primaryValue": 1348,
+   "listingCount": 91,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -76.01,
+    "data": [
+     null,
+     0,
+     -75.08,
+     null,
+     -75.97,
+     null,
+     -76.01
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Only [Rune|Runes] can be Socketed in this item",
+     "optional": false,
+     "statIds": [
+      "local_can_only_socket_runes"
+     ]
+    },
+    {
+     "text": "200% increased effect of Socketed [Rune|Runes]",
+     "optional": false,
+     "statIds": [
+      "local_rune_effect_+%"
+     ]
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 114",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (17-20) The Stars Answer",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 660,
+   "itemId": "Hrimnor's Hymn Runemastered Oak Greathammer",
+   "detailsId": "hrimnors-hymn-runemastered-oak-greathammer",
+   "name": "Hrimnor's Hymn",
+   "baseType": "Runemastered Oak Greathammer",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9Icmltbm9yc0h5bW4iLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/d37a6c8bd3/HrimnorsHymn.png",
+   "flavourText": "\"The crack of bone, the spray of blood.\r\nIs there sweeter music?\"\r\n- Hrimnor of the Ezomytes.",
+   "levelRequired": 55,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 15.5,
+   "listingCount": 2,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     0
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "Causes (20-40)% increased [Stun|Stun] Buildup",
+     "optional": false,
+     "statIds": [
+      "local_hit_damage_stun_multiplier_+%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(80-120)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "+(10-15) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "Gain (10-19) Life per enemy killed",
+     "optional": false,
+     "statIds": [
+      "base_life_gained_on_enemy_death"
+     ]
+    },
+    {
+     "text": "[Slam] Skills you use yourself cause an additional [Aftershock]",
+     "optional": false,
+     "statIds": [
+      "your_slam_aftershock_chance_%"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (200-300)-(373-559)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: 1",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 97",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 551,
+   "itemId": "The Ordained Grand Spear",
+   "detailsId": "the-ordained-grand-spear",
+   "name": "The Ordained",
+   "baseType": "Grand Spear",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kU3BlYXJzL1VuaXF1ZXMvVGhlT3JkYWluZWQiLCJ3IjoxLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/6c52dd93b7/TheOrdained.png",
+   "flavourText": "May the Lightless drown in the violence of His devotion.",
+   "levelRequired": 84,
+   "category": "[Spear]",
+   "primaryValue": 7.0,
+   "listingCount": 1592,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 40,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     20,
+     null,
+     40
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "25% increased [Melee] [Strike] Range with this weapon",
+     "optional": false,
+     "statIds": [
+      "local_+%_weapon_range"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(150-250)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds 1 to (200-300) [Lightning|Lightning] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_lightning_damage",
+      "local_maximum_added_lightning_damage"
+     ]
+    },
+    {
+     "text": "+(5-7.97)% to [Critical|Critical Hit] Chance",
+     "optional": false,
+     "statIds": [
+      "local_critical_strike_chance"
+     ]
+    },
+    {
+     "text": "[LifeLeech|Life Leech] recovers based on your [Lightning] damage as well as [Physical] damage",
+     "optional": false,
+     "statIds": [
+      "life_leech_also_recovers_based_on_lightning_damage"
+     ]
+    },
+    {
+     "text": "Create a [DivineFragment|Fragment of Divinity] in your [Presence] every 4 seconds",
+     "optional": false,
+     "statIds": [
+      "manifest_a_fragment_of_divinity_in_your_presence_every_4_seconds"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (140-206)-(210-309)",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-2)-(200-318)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: (10-12.97)%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.4-1.47)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 79",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 68",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 109",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (18-20) Righteous Descent",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 558,
+   "itemId": "Brutus' Lead Sprinkler Runeforged Morning Star",
+   "detailsId": "brutus-lead-sprinkler-runeforged-morning-star",
+   "name": "Brutus' Lead Sprinkler",
+   "baseType": "Runeforged Morning Star",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kTWFjZXMvVW5pcXVlcy9CcnV0dXNMZWFkU3ByaW5rbGVyIiwidyI6MiwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/ed0bbac0eb/BrutusLeadSprinkler.png",
+   "flavourText": "\"A sprinkle of liquid encouragement is often\r\nrequired to garnish the perfect confession.\"\r\n- Brutus, Warden of Axiom",
+   "levelRequired": 65,
+   "category": "[Mace|One Hand Mace]",
+   "primaryValue": 4.3,
+   "listingCount": 44,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 43.33,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     3.33,
+     null,
+     43.33
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Hits with this Weapon have 5% chance to Trigger Molten Shower per 25 Strength",
+     "optional": false,
+     "statIds": [
+      "local_%_chance_to_trigger_molten_shower_on_hit_with_this_weapon_per_25_strength"
+     ]
+    },
+    {
+     "text": "(80-120)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(5-10)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(15-25) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "5 to 10 Added [Attack] [Fire] Damage per 25 [Strength]",
+     "optional": false,
+     "statIds": [
+      "minimum_added_fire_damage_to_attacks_per_25_strength",
+      "maximum_added_fire_damage_to_attacks_per_25_strength"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Fire|Fire] Damage: (90-103)-(134-150)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 6.5%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 1-(10-20)",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (1.52-1.59)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 114",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (13-20) Molten Shower",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 564,
+   "itemId": "Rampart Raptor Runemastered Tense Crossbow",
+   "detailsId": "rampart-raptor-runemastered-tense-crossbow",
+   "name": "Rampart Raptor",
+   "baseType": "Runemastered Tense Crossbow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Dcm9zc2Jvd3MvVW5pcXVlcy9SYW1wYXJ0UmFwdG9yIiwidyI6MiwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/72f2d2f130/RampartRaptor.png",
+   "flavourText": "\"His approach to the gate was met with sounding trumpets\r\nand an unfurling of banners. He never saw it coming.\"\r\n- anonymous Brotherhood of Silence report",
+   "levelRequired": 55,
+   "category": "[Crossbow]",
+   "primaryValue": 3.0,
+   "listingCount": 58,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     0
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(20-30)% increased Bolt Speed",
+     "optional": false,
+     "statIds": [
+      "projectile_speed_+%_with_crossbow_skills"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(40-60)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(30-40)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "30% reduced Reload Speed",
+     "optional": false,
+     "statIds": [
+      "local_reload_speed_+%"
+     ]
+    },
+    {
+     "text": "Bolts fired by [Crossbow|Crossbow] [Attack|Attacks] have 100% chance to not\nexpend [Ammunition] if you've Reloaded [Recently]",
+     "optional": false,
+     "statIds": [
+      "crossbow_attack_%_chance_to_not_consume_ammo_if_reloaded_recently"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (87-124)-(161-230)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: (3-27)-(5-45)",
+     "optional": true
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-2)-(30-80)",
+     "optional": true
+    },
+    {
+     "text": "[Fire|Fire] Damage: (13-26)-(16-32)",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (2.08-2.4)",
+     "optional": false
+    },
+    {
+     "text": "Reload Time: (0.5-0.6)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 54",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 54",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 722,
+   "itemId": "Mjölner Runemastered Torment Club",
+   "detailsId": "mjolner-runemastered-torment-club",
+   "name": "Mjölner",
+   "baseType": "Runemastered Torment Club",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kTWFjZXMvVW5pcXVlcy9Nam9sbmVyIiwidyI6MiwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/9216de28a2/Mjolner.png",
+   "flavourText": "Look the storm in the eye and you will have its respect.",
+   "levelRequired": 84,
+   "category": "[Mace|One Hand Mace]",
+   "primaryValue": 2.9,
+   "listingCount": 88,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 45,
+    "data": [
+     null,
+     0,
+     45,
+     null,
+     50,
+     null,
+     45
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(40-60)% increased [Lightning] Damage",
+     "optional": true,
+     "statIds": [
+      "lightning_damage_+%"
+     ]
+    },
+    {
+     "text": "(50-100)% chance for [Lightning] Skills to [Chain] an additional time",
+     "optional": true,
+     "statIds": [
+      "lightning_skill_additional_chain_chance_%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "+200 [Intelligence] Requirement",
+     "optional": false,
+     "statIds": [
+      "local_intelligence_requirement_+"
+     ]
+    },
+    {
+     "text": "+100 [Strength] Requirement",
+     "optional": false,
+     "statIds": [
+      "local_strength_requirement_+"
+     ]
+    },
+    {
+     "text": "(251-350)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(10-20)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(2-4) to Level of all [Lightning] Skills",
+     "optional": false,
+     "statIds": [
+      "lightning_skill_gem_level_+"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Lightning|Lightning] Damage: (85-86)-(403-433)",
+     "optional": true
+    },
+    {
+     "text": "[Physical] Damage: (154-243)-(256-408)",
+     "optional": true
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.59-1.81)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: (174-224)",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 49",
+     "optional": true
+    },
+    {
+     "text": "[Intelligence|Int]: 200",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (14-19) Thundergod's Wrath",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 723,
+   "itemId": "The Flesh Poppet Runeforged Vicious Talisman",
+   "detailsId": "the-flesh-poppet-runeforged-vicious-talisman",
+   "name": "The Flesh Poppet",
+   "baseType": "Runeforged Vicious Talisman",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvT2ZmaGFuZC9UYWxpc21hbnMvVW5pcXVlcy9UaGVTa2luVGhpZWYiLCJ3IjoyLCJoIjoyLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/7209883e7c/TheSkinThief.png",
+   "flavourText": "Long ago, the witches of the Azak Tribe learned\r\nhow to tap into the flow of Vivid lifeforce to\r\n'cooperate' with their enemies... forcefully.",
+   "levelRequired": 65,
+   "category": "[Talisman]",
+   "primaryValue": 2.8,
+   "listingCount": 19,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 180,
+    "data": [
+     null,
+     0,
+     120,
+     null,
+     100,
+     null,
+     180
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "(90-120)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(7-13)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(7-13) to all [Attributes|Attributes]",
+     "optional": false,
+     "statIds": [
+      "additional_all_attributes"
+     ]
+    },
+    {
+     "text": "(30-40)% reduced [Presence|Presence] Area of Effect",
+     "optional": false,
+     "statIds": [
+      "presence_area_+%"
+     ]
+    },
+    {
+     "text": "Copy a random [MonsterModifiers|Modifier] from each enemy in your [Presence] when\nyou [Shapeshift] to an Animal form\nModifiers gained this way are lost after 30 seconds or when you next [Shapeshift]",
+     "optional": false,
+     "statIds": [
+      "gain_a_modifier_from_enemies_in_presence_when_shapeshifting_ms"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (233-336)-(389-560)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 8%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.34-1.41)",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 2-60",
+     "optional": true
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 74",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 52",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 673,
+   "itemId": "Twisted Empyrean Runemastered Aberrant Sledge",
+   "detailsId": "twisted-empyrean-runemastered-aberrant-sledge",
+   "name": "Twisted Empyrean",
+   "baseType": "Runemastered Aberrant Sledge",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9TcGlkZXJWZXJpc2l1bU1hdWwiLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/3f1ea4708e/SpiderVerisiumMaul.png",
+   "flavourText": "Infinite mutations over endless eons borne upon it in a singular moment.",
+   "levelRequired": 84,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 2.0,
+   "listingCount": 90,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -33.33,
+    "data": [
+     null,
+     0,
+     -33.33,
+     null,
+     -33.33,
+     null,
+     -33.33
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(200-297)% increased [Freeze|Freeze] Buildup",
+     "optional": true,
+     "statIds": [
+      "hit_damage_freeze_multiplier_+%"
+     ]
+    },
+    {
+     "text": "Skills which create Fissures have a 50% chance to create an additional Fissure",
+     "optional": true,
+     "statIds": [
+      "skill_additional_fissure_chance_%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(80-100)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds (150-200) to (350-400) [Cold|Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_cold_damage",
+      "local_maximum_added_cold_damage"
+     ]
+    },
+    {
+     "text": "+(300-400) to maximum Mana",
+     "optional": false,
+     "statIds": [
+      "base_maximum_mana"
+     ]
+    },
+    {
+     "text": "+(4-6)% to [Critical|Critical Hit] Chance",
+     "optional": false,
+     "statIds": [
+      "local_critical_strike_chance"
+     ]
+    },
+    {
+     "text": "(10-20)% of Damage is taken from Mana before Life",
+     "optional": false,
+     "statIds": [
+      "base_damage_removed_from_mana_before_life_%"
+     ]
+    },
+    {
+     "text": "[Attack|Attacks] with this Weapon have Added [Cold] Damage equal to (6-8)% to (10-12)% of maximum Mana",
+     "optional": false,
+     "statIds": [
+      "local_attacks_have_added_min_cold_damage_equal_to_%_of_maximum_mana",
+      "local_attacks_have_added_max_cold_damage_equal_to_%_of_maximum_mana"
+     ]
+    },
+    {
+     "text": "[Conversion|Convert] 100% of [Fire] Damage with [Mace] Skills to [Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "unique_mace_fire_damage_with_mace_skills_%_to_convert_to_cold"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (52-340)-(110-709)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: (150-336)-(350-675)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: (9-11)%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1-1.32)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 70",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: (32-163)",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 65",
+     "optional": true
+    },
+    {
+     "text": "[Intelligence|Int]: (65-130)",
+     "optional": true
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (18-20) Starborn Onslaught",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 554,
+   "itemId": "Saitha's Spear Runeforged Barbed Spear",
+   "detailsId": "saithas-spear-runeforged-barbed-spear",
+   "name": "Saitha's Spear",
+   "baseType": "Runeforged Barbed Spear",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kU3BlYXJzL1VuaXF1ZXMvU2FpdGhhc1NwZWFyIiwidyI6MSwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/6f2b36d0bc/SaithasSpear.png",
+   "flavourText": "Born in a star of man's own make,\r\nfused to her hand by her last mistake.",
+   "levelRequired": 55,
+   "category": "[Spear]",
+   "primaryValue": 1.55,
+   "listingCount": 51,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -20.61,
+    "data": [
+     null,
+     0,
+     -22.69,
+     null,
+     -46.86,
+     null,
+     -20.61
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "Bleeding you inflict deals Damage (10-20)% faster",
+     "optional": false,
+     "statIds": [
+      "faster_bleed_%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "Adds (14-26) to (27-32) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds (33-41) to (47-53) [Fire|Fire] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_fire_damage",
+      "local_maximum_added_fire_damage"
+     ]
+    },
+    {
+     "text": "(15-25)% chance to cause [Bleeding|Bleeding] on [Hit]",
+     "optional": false,
+     "statIds": [
+      "local_chance_to_bleed_on_hit_%"
+     ]
+    },
+    {
+     "text": "[LocalOnAggravateBleeding|Aggravating any Bleeding] with this Weapon also [AggravateIgnite|Aggravates all Ignites] on the target",
+     "optional": false,
+     "statIds": [
+      "local_aggravating_bleeds_also_causes_you_to_aggravate_ignites"
+     ]
+    },
+    {
+     "text": "(25-40)% chance to [Aggravate] [Bleeding] on [Hit]",
+     "optional": false,
+     "statIds": [
+      "local_aggravate_bleeding_on_hit_chance_%"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (40-62)-(76-94)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: (84-104)-(142-163)",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 1-(20-30)",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 6%",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: 1.5",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 31",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 76",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "itemId": "Sacred Flame Shrine Sceptre",
+   "detailsId": "sacred-flame-shrine-sceptre",
+   "name": "Sacred Flame",
+   "baseType": "Shrine Sceptre",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9TY2VwdGVycy9VbmlxdWVzL1NhY3JlZEZsYW1lIiwidyI6MiwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/f6c6572ac6/SacredFlame.png",
+   "flavourText": "Fire destroys, but fire also purifies.\r\nLife always springs anew.",
+   "levelRequired": 84,
+   "category": "[Sceptre]",
+   "primaryValue": 1.0,
+   "listingCount": 523,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -66.67,
+    "data": [
+     null,
+     0,
+     -34.1,
+     null,
+     -33.33,
+     null,
+     -66.67
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "[Gain] (40-60)% of Damage as Extra [Fire] Damage",
+     "optional": false,
+     "statIds": [
+      "non_skill_base_all_damage_%_to_gain_as_fire"
+     ]
+    },
+    {
+     "text": "[Allies] in your [Presence] Regenerate (2-3)% of their Maximum Life per second",
+     "optional": false,
+     "statIds": [
+      "allies_in_presence_life_regeneration_rate_per_minute_equal_to_their_maximum_life_%"
+     ]
+    },
+    {
+     "text": "[Allies|Allies] in your [Presence|Presence] [Gain|Gain] (20-30)% of Damage as Extra Fire Damage",
+     "optional": false,
+     "statIds": [
+      "allies_in_presence_damage_%_to_gain_as_fire"
+     ]
+    },
+    {
+     "text": "Enemies in your [Presence|Presence] Resist [ElementalDamage|Elemental Damage] based on their Lowest [Resistances|Resistance]",
+     "optional": false,
+     "statIds": [
+      "enemies_in_presence_elemental_damage_resisted_by_lowest_elemental_resistance"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Spirit]: (100-115)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 17",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 38",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (14-20) Purity of Fire",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 16,
+   "itemId": "Atziri's Rule Reflecting Staff",
+   "detailsId": "atziris-rule-reflecting-staff",
+   "name": "Atziri's Rule",
+   "baseType": "Reflecting Staff",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9TdGF2ZXMvVW5pcXVlcy9BdHppcmlTdGFmZiIsInciOjEsImgiOjQsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/33860266df/AtziriStaff.png",
+   "flavourText": "Bow before her... or suffer the most gruelling death imaginable.",
+   "levelRequired": 78,
+   "category": "[Staff]",
+   "primaryValue": 1.0,
+   "listingCount": 1187,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -50,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     -50
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "(10-20)% increased maximum Life",
+     "optional": false,
+     "statIds": [
+      "maximum_life_+%"
+     ]
+    },
+    {
+     "text": "+(3-5) to Level of all [Corrupted] [Spell] Skill Gems",
+     "optional": false,
+     "statIds": [
+      "corrupted_spell_skill_gem_level_+"
+     ]
+    },
+    {
+     "text": "(10-20)% increased Cast Speed",
+     "optional": false,
+     "statIds": [
+      "base_cast_speed_+%"
+     ]
+    },
+    {
+     "text": "+(20-30) to [Intelligence|Intelligence]",
+     "optional": false,
+     "statIds": [
+      "additional_intelligence"
+     ]
+    },
+    {
+     "text": "Spells which cost Life [Gain] (80-120)% of Damage as [Gain|Extra] [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "spells_gain_%_physical_damage_if_they_cost_life"
+     ]
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 70",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 114",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (17-19) Mirror of Refraction",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 444,
+   "itemId": "Rampart Raptor Runeforged Tense Crossbow",
+   "detailsId": "rampart-raptor-runeforged-tense-crossbow",
+   "name": "Rampart Raptor",
+   "baseType": "Runeforged Tense Crossbow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Dcm9zc2Jvd3MvVW5pcXVlcy9SYW1wYXJ0UmFwdG9yIiwidyI6MiwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/72f2d2f130/RampartRaptor.png",
+   "flavourText": "\"His approach to the gate was met with sounding trumpets\r\nand an unfurling of banners. He never saw it coming.\"\r\n- anonymous Brotherhood of Silence report",
+   "levelRequired": 38,
+   "category": "[Crossbow]",
+   "primaryValue": 1.0,
+   "listingCount": 196,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 21.36,
+    "data": [
+     null,
+     0,
+     1.07,
+     null,
+     0.97,
+     null,
+     21.36
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(20-30)% increased Bolt Speed",
+     "optional": false,
+     "statIds": [
+      "projectile_speed_+%_with_crossbow_skills"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(40-60)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(30-40)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "30% reduced Reload Speed",
+     "optional": false,
+     "statIds": [
+      "local_reload_speed_+%"
+     ]
+    },
+    {
+     "text": "Bolts fired by [Crossbow|Crossbow] [Attack|Attacks] have 100% chance to not\nexpend [Ammunition] if you've Reloaded [Recently]",
+     "optional": false,
+     "statIds": [
+      "crossbow_attack_%_chance_to_not_consume_ammo_if_reloaded_recently"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (62-83)-(116-158)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 1-20",
+     "optional": true
+    },
+    {
+     "text": "[Fire|Fire] Damage: (7-13)-(11-16)",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (2.08-2.24)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: (9-18)-(15-30)",
+     "optional": true
+    },
+    {
+     "text": "Reload Time: (0.77-0.85)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: (38-50)",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 39",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 39",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 550,
+   "itemId": "Twisted Empyrean Aberrant Sledge",
+   "detailsId": "twisted-empyrean-aberrant-sledge",
+   "name": "Twisted Empyrean",
+   "baseType": "Aberrant Sledge",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9TcGlkZXJWZXJpc2l1bU1hdWwiLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/3f1ea4708e/SpiderVerisiumMaul.png",
+   "flavourText": "Infinite mutations over endless eons borne upon it in a singular moment.",
+   "levelRequired": 84,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 1.0,
+   "listingCount": 459,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     -48,
+     null,
+     0
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "(80-100)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds (150-200) to (350-400) [Cold|Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_cold_damage",
+      "local_maximum_added_cold_damage"
+     ]
+    },
+    {
+     "text": "+(300-400) to maximum Mana",
+     "optional": false,
+     "statIds": [
+      "base_maximum_mana"
+     ]
+    },
+    {
+     "text": "+(4-5.99)% to [Critical|Critical Hit] Chance",
+     "optional": false,
+     "statIds": [
+      "local_critical_strike_chance"
+     ]
+    },
+    {
+     "text": "(10-20)% of Damage is taken from Mana before Life",
+     "optional": false,
+     "statIds": [
+      "base_damage_removed_from_mana_before_life_%"
+     ]
+    },
+    {
+     "text": "[Attack|Attacks] with this Weapon have Added [Cold] Damage equal to (6-8)% to (10-12)% of maximum Mana",
+     "optional": false,
+     "statIds": [
+      "local_attacks_have_added_min_cold_damage_equal_to_%_of_maximum_mana",
+      "local_attacks_have_added_max_cold_damage_equal_to_%_of_maximum_mana"
+     ]
+    },
+    {
+     "text": "[Conversion|Convert] 100% of [Fire] Damage with [Mace] Skills to [Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "unique_mace_fire_damage_with_mace_skills_%_to_convert_to_cold"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (133-173)-(277-359)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: (150-200)-(350-400)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: (9-10.99)%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.2",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 70",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: (32-163)",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 130",
+     "optional": true
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level 19 Starborn Onslaught",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 559,
+   "itemId": "Tidebreaker Runeforged Pointed Maul",
+   "detailsId": "tidebreaker-runeforged-pointed-maul",
+   "name": "Tidebreaker",
+   "baseType": "Runeforged Pointed Maul",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9UaWRlYnJlYWtlciIsInciOjIsImgiOjQsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/d3f1c52b5b/Tidebreaker.png",
+   "flavourText": "The sea strikes the rock relentlessly.\r\nWhether in one day or in ten thousand years,\r\neventually the rock will crumble,\r\nand the Brine King's domain will grow.",
+   "levelRequired": 65,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 1.0,
+   "listingCount": 31,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 76.58,
+    "data": [
+     null,
+     0,
+     1.78,
+     null,
+     69.95,
+     null,
+     76.58
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "[Strike|Strikes] deal [MeleeSplash|Splash Damage]",
+     "optional": false,
+     "statIds": [
+      "melee_splash"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(120-150)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "+(2-3) to Level of all [Melee|Melee] Skills",
+     "optional": false,
+     "statIds": [
+      "melee_skill_gem_level_+"
+     ]
+    },
+    {
+     "text": "+(20-30) to [Intelligence|Intelligence]",
+     "optional": false,
+     "statIds": [
+      "additional_intelligence"
+     ]
+    },
+    {
+     "text": "Causes (150-200)% increased [Stun|Stun] Buildup",
+     "optional": false,
+     "statIds": [
+      "local_hit_damage_stun_multiplier_+%"
+     ]
+    },
+    {
+     "text": "[DamageTypes|All Damage] from [Hit|Hits] with this Weapon [Contributes|Contributes] to [Chill] [BuffMagnitude|Magnitude]",
+     "optional": false,
+     "statIds": [
+      "local_all_damage_can_chill"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (275-357)-(413-536)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 6.5%",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (1.1-1.16)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 114",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 561,
+   "itemId": "Double Vision Runemastered Dyad Crossbow",
+   "detailsId": "double-vision-runemastered-dyad-crossbow",
+   "name": "Double Vision",
+   "baseType": "Runemastered Dyad Crossbow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Dcm9zc2Jvd3MvVW5pcXVlcy9Eb3VibGVWaXNpb24iLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/7522fc1dfa/DoubleVision.png",
+   "flavourText": "For those without a home in the Vastiri, the\r\nhot day is harsh, but the chill night is far worse.",
+   "levelRequired": 65,
+   "category": "[Crossbow]",
+   "primaryValue": 1.0,
+   "listingCount": 79,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 21.36,
+    "data": [
+     null,
+     0,
+     -1.46,
+     null,
+     21.36,
+     null,
+     21.36
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "Loads an additional bolt",
+     "optional": false,
+     "statIds": [
+      "base_number_of_crossbow_bolts",
+      "quality_display_base_number_of_crossbow_bolts_is_gem"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "Adds (14-21) to (25-37) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "+5% to [Critical|Critical Hit] Chance",
+     "optional": false,
+     "statIds": [
+      "local_critical_strike_chance"
+     ]
+    },
+    {
+     "text": "(15-25)% increased Reload Speed",
+     "optional": false,
+     "statIds": [
+      "local_reload_speed_+%"
+     ]
+    },
+    {
+     "text": "When you reload, triggers Gemini Surge to alternately\ngain (2-6) [Surge|Cold Surges] or (2-6) [Surge|Fire Surges]",
+     "optional": false,
+     "statIds": [
+      "gain_X_instilling_cold_on_reload",
+      "gain_X_instilling_fire_on_reload"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (57-87)-(196-283)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 12%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-2)-(30-60)",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: 1.6",
+     "optional": false
+    },
+    {
+     "text": "Reload Time: (0.6-0.65)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 63",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 63",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (7-20) Gemini Surge",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 562,
+   "itemId": "Hysseg's Claw Runemastered Familial Talisman",
+   "detailsId": "hyssegs-claw-runemastered-familial-talisman",
+   "name": "Hysseg's Claw",
+   "baseType": "Runemastered Familial Talisman",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvT2ZmaGFuZC9UYWxpc21hbnMvVW5pcXVlcy9IYW5kT2ZUaGVDbGFuIiwidyI6MiwiaCI6Miwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/5ff4ad8d36/HandOfTheClan.png",
+   "flavourText": "In a time of great need, surrounded by Abyssals,\r\nthe Wayward Druid came to the Sun Clan's aid.\r\nIt is a debt they have never forgotten.",
+   "levelRequired": 64,
+   "category": "[Talisman]",
+   "primaryValue": 1.0,
+   "listingCount": 26,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0.74,
+    "data": [
+     null,
+     0,
+     -1.81,
+     null,
+     -1.2,
+     null,
+     0.74
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "[Minion|Minions] deal (51-100)% increased Damage",
+     "optional": false,
+     "statIds": [
+      "minion_damage_+%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(70-100)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "5% increased Movement Speed",
+     "optional": false,
+     "statIds": [
+      "base_movement_velocity_+%"
+     ]
+    },
+    {
+     "text": "+(8-15) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "+(8-15) to [Intelligence|Intelligence]",
+     "optional": false,
+     "statIds": [
+      "additional_intelligence"
+     ]
+    },
+    {
+     "text": "(5-8)% increased Damage per [Minion]",
+     "optional": false,
+     "statIds": [
+      "damage_+%_per_active_minion"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (124-172)-(207-287)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 8%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.25",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: (12-63)",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 43",
+     "optional": true
+    },
+    {
+     "text": "[Intelligence|Int]: (27-52)",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (9-19) Cackling Companions",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 674,
+   "itemId": "Spiteful Floret Runemastered Nettle Talisman",
+   "detailsId": "spiteful-floret-runemastered-nettle-talisman",
+   "name": "Spiteful Floret",
+   "baseType": "Runemastered Nettle Talisman",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvT2ZmaGFuZC9UYWxpc21hbnMvVW5pcXVlcy9Dcmltc29uQ2hyeXNhbGlzIiwidyI6MiwiaCI6Miwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/afd2b9aad6/CrimsonChrysalis.png",
+   "flavourText": "If you see the blushing tree of the northern woods,\r\nremember: \"Blossoms of red, the tree's been fed.\r\nBlossoms of white, prepare for a fight.\"",
+   "levelRequired": 78,
+   "category": "[Talisman]",
+   "primaryValue": 1.0,
+   "listingCount": 24,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     0
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "(60-90)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(6-10)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(7-14) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "(20-30)% chance to cause [Bleeding|Bleeding] on [Hit]",
+     "optional": false,
+     "statIds": [
+      "local_chance_to_bleed_on_hit_%"
+     ]
+    },
+    {
+     "text": "Every 5 [Rage] also grants 5% of Damage taken [Recoup|Recouped] as Life",
+     "optional": false,
+     "statIds": [
+      "x%_damage_taken_recouped_as_life_per_5_rage"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (109-163)-(182-274)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 11%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.33-1.38)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 63",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 45",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (8-20) Sanguine Revelry",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 703,
+   "itemId": "The Sentry Runemastered Gothic Quarterstaff",
+   "detailsId": "the-sentry-runemastered-gothic-quarterstaff",
+   "name": "The Sentry",
+   "baseType": "Runemastered Gothic Quarterstaff",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9XYXJTdGF2ZXMvVW5pcXVlcy9UaGVTZW50cnkiLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/a21add4399/TheSentry.png",
+   "flavourText": "The night Draven attacked,\r\nErian was asleep at his post.",
+   "levelRequired": 55,
+   "category": "[Quarterstaff]",
+   "primaryValue": 1.0,
+   "listingCount": 5,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 0,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     0
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "[Ignite|Ignites] you inflict deal Damage (30-39)% faster",
+     "optional": false,
+     "statIds": [
+      "faster_burn_%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "No [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds (25-32) to (40-50) [Fire|Fire] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_fire_damage",
+      "local_maximum_added_fire_damage"
+     ]
+    },
+    {
+     "text": "+(30-50) to [Accuracy|Accuracy] Rating",
+     "optional": false,
+     "statIds": [
+      "local_accuracy_rating"
+     ]
+    },
+    {
+     "text": "+20% to [Resistances|Fire Resistance]",
+     "optional": false,
+     "statIds": [
+      "base_fire_damage_resistance_%"
+     ]
+    },
+    {
+     "text": "100% increased [Flammability] [BuffMagnitude|Magnitude]",
+     "optional": false,
+     "statIds": [
+      "ignite_chance_+%"
+     ]
+    },
+    {
+     "text": "30% increased [LightRadius|Light Radius]",
+     "optional": false,
+     "statIds": [
+      "light_radius_+%"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Fire|Fire] Damage: (143-150)-(236-246)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 12%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.4",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 76",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 31",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 556,
+   "itemId": "Quecholli Runeforged Crumbling Maul",
+   "detailsId": "quecholli-runeforged-crumbling-maul",
+   "name": "Quecholli",
+   "baseType": "Runeforged Crumbling Maul",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9RdWVjaG9sbGkiLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/c44eb52be2/Quecholli.png",
+   "flavourText": "\"The finest prosperity grows from the direst\r\ncarnage. Such is the nature of progress.\"\r\n- Doryani of the Vaal",
+   "levelRequired": 55,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 0.9784,
+   "listingCount": 27,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -2.16,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     0,
+     null,
+     -2.16
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "Causes Enemies to Explode on [Critical] kill, for 10% of their Life as [Physical|Physical Damage]",
+     "optional": false,
+     "statIds": [
+      "local_explode_on_kill_with_crit_%_physical_damage_to_deal"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(100-149)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "+(10-15) to all [Attributes|Attributes]",
+     "optional": false,
+     "statIds": [
+      "additional_all_attributes"
+     ]
+    },
+    {
+     "text": "Gain 30 Life per enemy killed",
+     "optional": false,
+     "statIds": [
+      "base_life_gained_on_enemy_death"
+     ]
+    },
+    {
+     "text": "Hits with this Weapon have no [CriticalDamageBonus|Critical Damage Bonus]",
+     "optional": false,
+     "statIds": [
+      "local_no_critical_strike_multiplier"
+     ]
+    },
+    {
+     "text": "This Weapon's [Critical|Critical Hit] Chance is 100%",
+     "optional": false,
+     "statIds": [
+      "local_weapon_base_crit_chance_permyriad_override"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (210-290)-(256-353)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 100%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 1-30",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: 1.1",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 97",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 659,
+   "itemId": "Pillar of the Caged God Runemastered Long Quarterstaff",
+   "detailsId": "pillar-of-the-caged-god-runemastered-long-quarterstaff",
+   "name": "Pillar of the Caged God",
+   "baseType": "Runemastered Long Quarterstaff",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9XYXJTdGF2ZXMvVW5pcXVlcy9QaWxsYXJPZlRoZUNhZ2VkR29kIiwidyI6MiwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/b79c320a48/PillarOfTheCagedGod.png",
+   "flavourText": "Forged to rule the waves and tide\r\nDestined to serve the monkey's paw\r\nStrong as a tower of iron\r\nDeft as the needle doubt",
+   "levelRequired": 55,
+   "category": "[Quarterstaff]",
+   "primaryValue": 0.9261,
+   "listingCount": 9,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 64.35,
+    "data": [
+     null,
+     0,
+     60.44,
+     null,
+     77.46,
+     null,
+     64.35
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "16% increased [Melee] [Strike] Range with this weapon",
+     "optional": false,
+     "statIds": [
+      "local_+%_weapon_range"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "1% increased Area of Effect for [Attack|Attacks] per 10 [Intelligence|Intelligence]",
+     "optional": false,
+     "statIds": [
+      "attack_area_of_effect_+%_per_10_int"
+     ]
+    },
+    {
+     "text": "1% increased [Attack|Attack] Speed per 10 [Dexterity|Dexterity]",
+     "optional": false,
+     "statIds": [
+      "attack_speed_+%_per_10_dex"
+     ]
+    },
+    {
+     "text": "10% increased Weapon Damage per 10 [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "weapon_damage_+%_per_10_str"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Cold|Cold] Damage: (43-61)-(89-119)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: (13-34)-(16-40)",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 10%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 1-30",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (1.4-1.61)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 76",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 31",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 675,
+   "itemId": "Brain Rattler Runemastered Studded Greatclub",
+   "detailsId": "brain-rattler-runemastered-studded-greatclub",
+   "name": "Brain Rattler",
+   "baseType": "Runemastered Studded Greatclub",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9CcmFpbnJhdHRsZXIiLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/68b834f0c5/Brainrattler.png",
+   "flavourText": "The mind may have no limits, but the skull sure does.",
+   "levelRequired": 55,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 0.8678,
+   "listingCount": 6,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -13.22,
+    "data": [
+     null,
+     0,
+     0,
+     null,
+     -10.88,
+     null,
+     -13.22
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds 1 to (110-115) [Lightning|Lightning] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_lightning_damage",
+      "local_maximum_added_lightning_damage"
+     ]
+    },
+    {
+     "text": "(10-15)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "All damage with this Weapon causes [Electrocute|Electrocution] buildup",
+     "optional": false,
+     "statIds": [
+      "local_all_damage_can_electrocute"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (15-18)-(140-165)",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (47-49)-(530-585)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.21-1.27)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 97",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 422,
+   "itemId": "Doomfletch Runeforged Composite Bow",
+   "detailsId": "doomfletch-runeforged-composite-bow",
+   "name": "Doomfletch",
+   "baseType": "Runeforged Composite Bow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Cb3dzL1VuaXF1ZXMvRG9vbWZsZXRjaCIsInciOjIsImgiOjQsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/2f284498c5/Doomfletch.png",
+   "flavourText": "\"Toasted or frozen\r\nOr twitching in the light\r\nI'm not fussy\r\nAnd neither is Death.\"\r\n- Koralus Doomfletch",
+   "levelRequired": 55,
+   "category": "[Bow]",
+   "primaryValue": 0.86,
+   "listingCount": 9,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -7.96,
+    "data": [
+     null,
+     0,
+     -9.07,
+     null,
+     -10.95,
+     null,
+     -7.96
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds (5-7) to (10-12) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "+10 to [Dexterity|Dexterity]",
+     "optional": false,
+     "statIds": [
+      "additional_dexterity"
+     ]
+    },
+    {
+     "text": "(30-50)% increased Mana Regeneration Rate",
+     "optional": false,
+     "statIds": [
+      "mana_regeneration_rate_+%"
+     ]
+    },
+    {
+     "text": "[Attack|Attacks] with this Weapon gain 100% of [Physical] damage as [Gain|Extra] damage of each [ElementalDamage|Element]",
+     "optional": false,
+     "statIds": [
+      "local_non_skill_physical_damage_%_to_gain_as_each_element_with_attacks_while_have_this_two_handed_hand_weapon"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (58-82)-(98-136)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.2",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 97",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 440,
+   "itemId": "Trenchtimbre Runeforged Spiked Club",
+   "detailsId": "trenchtimbre-runeforged-spiked-club",
+   "name": "Trenchtimbre",
+   "baseType": "Runeforged Spiked Club",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kTWFjZXMvVW5pcXVlcy9UcmVuY2h0aW1icmUiLCJ3IjoyLCJoIjozLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/b07d6d6d58/Trenchtimbre.png",
+   "flavourText": "Ezomyte loyalty was not given to distant leaders.\r\nIt was earned by comrades in arms.",
+   "levelRequired": 40,
+   "category": "[Mace|One Hand Mace]",
+   "primaryValue": 0.8303,
+   "listingCount": 55,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 18.55,
+    "data": [
+     null,
+     0,
+     1.07,
+     null,
+     17.3,
+     null,
+     18.55
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds (13-15) to (22-25) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "(20-30)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(1-2) to Level of all [Minion|Minion] Skills",
+     "optional": false,
+     "statIds": [
+      "minion_skill_gem_level_+"
+     ]
+    },
+    {
+     "text": "Increases and Reductions to [Minion] [Attack] Speed also affect you",
+     "optional": false,
+     "statIds": [
+      "additive_modifiers_to_minion_attack_speed_also_affect_you"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (69-84)-(115-139)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: 1-(20-30)",
+     "optional": true
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (1.8-1.95)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: (40-50)",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 72",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 439,
+   "itemId": "Quill Rain Runeforged Shortbow",
+   "detailsId": "quill-rain-runeforged-shortbow",
+   "name": "Quill Rain",
+   "baseType": "Runeforged Shortbow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Cb3dzL1VuaXF1ZXMvUXVpbGxSYWluIiwidyI6MiwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/a9660e5743/QuillRain.png",
+   "flavourText": "\"The rain of a thousand quills that whittle\r\npresent into past, life into death.\"\r\n- Rigwald of the Ezomytes",
+   "levelRequired": 38,
+   "category": "[Bow]",
+   "primaryValue": 0.8198,
+   "listingCount": 53,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 473.3,
+    "data": [
+     null,
+     0,
+     0.77,
+     null,
+     467.3,
+     null,
+     473.3
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "Projectiles have 50% chance for an additional Projectile when [Fork|Forking]",
+     "optional": true
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "100% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(10-20) to [Dexterity|Dexterity]",
+     "optional": false,
+     "statIds": [
+      "additional_dexterity"
+     ]
+    },
+    {
+     "text": "(50-100)% increased Arrow Speed",
+     "optional": false,
+     "statIds": [
+      "base_arrow_speed_+%"
+     ]
+    },
+    {
+     "text": "40% less [Attack] Damage",
+     "optional": false,
+     "statIds": [
+      "unique_quill_rain_damage_+%_final"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (30-44)-(56-81)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-2)-(20-40)",
+     "optional": true
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (2.5-2.8)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 18-30",
+     "optional": true
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: (38-55)",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: (68-97)",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 17,
+   "itemId": "Guiding Palm of the Eye Shrine Sceptre",
+   "detailsId": "guiding-palm-of-the-eye-shrine-sceptre",
+   "name": "Guiding Palm of the Eye",
+   "baseType": "Shrine Sceptre",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9TY2VwdGVycy9VbmlxdWVzL0d1aWRpbmdQYWxtQ29sZCIsInciOjIsImgiOjMsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/3fa1d19d68/GuidingPalmCold.png",
+   "flavourText": "\"With piercing eyes, you saw through the Stillness.\r\nUndulating as one, you gloriously covered all in white. \r\nBut... I can bear you no longer.\"\r\nThe Dreamer whispered with fogging breath, ice creeping down his hand.",
+   "levelRequired": 78,
+   "category": "[Sceptre]",
+   "primaryValue": 0.6306,
+   "listingCount": 1225,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 206.1,
+    "data": [
+     null,
+     0,
+     1.07,
+     null,
+     152.4,
+     null,
+     206.1
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "[Gain] 25% of Damage as Extra [Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "non_skill_base_all_damage_%_to_gain_as_cold"
+     ]
+    },
+    {
+     "text": "[Allies|Allies] in your [Presence|Presence] deal (15-23) to (28-35) added [Attack|Attack] [Cold|Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "allies_in_presence_attack_minimum_added_cold_damage",
+      "allies_in_presence_attack_maximum_added_cold_damage"
+     ]
+    },
+    {
+     "text": "50% of your Base Life Regeneration is granted to [Allies] in your [Presence]",
+     "optional": false,
+     "statIds": [
+      "total_base_life_regeneration_rate_per_minute_%_granted_to_allies_in_your_presence"
+     ]
+    },
+    {
+     "text": "+(20-30) to [Intelligence|Intelligence]",
+     "optional": false,
+     "statIds": [
+      "additional_intelligence"
+     ]
+    },
+    {
+     "text": "25% increased [LightRadius|Light Radius]",
+     "optional": false,
+     "statIds": [
+      "light_radius_+%"
+     ]
+    },
+    {
+     "text": "Grants effect of [UniqueShrineCold|Guided Freezing Shrine]",
+     "optional": false,
+     "statIds": [
+      "has_unique_cold_shrine_effect"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Spirit]: (100-115)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 17",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 38",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (14-19) Purity of Ice",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 446,
+   "itemId": "Skysliver Runeforged Winged Spear",
+   "detailsId": "skysliver-runeforged-winged-spear",
+   "name": "Skysliver",
+   "baseType": "Runeforged Winged Spear",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kU3BlYXJzL1VuaXF1ZXMvU2t5c2xpdmVyIiwidyI6MSwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/b495502d39/Skysliver.png",
+   "flavourText": "Heads fall to the sand, just as the star fell from the sky",
+   "levelRequired": 40,
+   "category": "[Spear]",
+   "primaryValue": 0.6306,
+   "listingCount": 324,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 22.45,
+    "data": [
+     null,
+     0,
+     21.28,
+     null,
+     19.15,
+     null,
+     22.45
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "No [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "Adds 1 to (80-119) [Lightning|Lightning] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_lightning_damage",
+      "local_maximum_added_lightning_damage"
+     ]
+    },
+    {
+     "text": "(15-28)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "(50-100)% increased chance to [Shock]",
+     "optional": false,
+     "statIds": [
+      "shock_chance_+%"
+     ]
+    },
+    {
+     "text": "[BooleanDamageRoll|Rolls only the minimum or maximum Damage value] for each [DamageTypes|Damage Type]",
+     "optional": false,
+     "statIds": [
+      "local_damage_roll_always_min_or_max"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-2)-(205-269)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: 4-6",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.96-2.18)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 40",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 23",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 56",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 19,
+   "itemId": "Guiding Palm of the Mind Shrine Sceptre",
+   "detailsId": "guiding-palm-of-the-mind-shrine-sceptre",
+   "name": "Guiding Palm of the Mind",
+   "baseType": "Shrine Sceptre",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9TY2VwdGVycy9VbmlxdWVzL0d1aWRpbmdQYWxtTGlnaHRuaW5nIiwidyI6MiwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/4a37445a92/GuidingPalmLightning.png",
+   "flavourText": "\"Deep in thought, you would tremble the very air before you.\r\nWreathed in light, you nurtured them all. \r\nAnd yet... Your nature became you.\"\r\nThe Dreamer mused with aching heart, as remnants of forking tendrils burst forth.",
+   "levelRequired": 78,
+   "category": "[Sceptre]",
+   "primaryValue": 0.5255,
+   "listingCount": 1163,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 155.1,
+    "data": [
+     null,
+     0,
+     -3.99,
+     null,
+     152.4,
+     null,
+     155.1
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "[Gain] 25% of Damage as Extra [Lightning] Damage",
+     "optional": false,
+     "statIds": [
+      "non_skill_base_all_damage_%_to_gain_as_lightning"
+     ]
+    },
+    {
+     "text": "[Allies|Allies] in your [Presence|Presence] deal 1 to (56-70) added [Attack|Attack] [Lightning|Lightning] Damage",
+     "optional": false,
+     "statIds": [
+      "allies_in_presence_attack_minimum_added_lightning_damage",
+      "allies_in_presence_attack_maximum_added_lightning_damage"
+     ]
+    },
+    {
+     "text": "50% of your Base Life Regeneration is granted to [Allies] in your [Presence]",
+     "optional": false,
+     "statIds": [
+      "total_base_life_regeneration_rate_per_minute_%_granted_to_allies_in_your_presence"
+     ]
+    },
+    {
+     "text": "+(20-30) to [Dexterity|Dexterity]",
+     "optional": false,
+     "statIds": [
+      "additional_dexterity"
+     ]
+    },
+    {
+     "text": "25% increased [LightRadius|Light Radius]",
+     "optional": false,
+     "statIds": [
+      "light_radius_+%"
+     ]
+    },
+    {
+     "text": "Grants effect of [UniqueShrineLightning|Guided Tempest Shrine]",
+     "optional": false,
+     "statIds": [
+      "has_unique_lightning_shrine_effect"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Spirit]: 100",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 17",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 38",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (14-20) Purity of Lightning",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 456,
+   "itemId": "Hoghunt Runemastered Felled Greatclub",
+   "detailsId": "hoghunt-runemastered-felled-greatclub",
+   "name": "Hoghunt",
+   "baseType": "Runemastered Felled Greatclub",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9Ib2dodW50IiwidyI6MiwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/f2611ee9b4/Hoghunt.png",
+   "flavourText": "There was a very clear and delicious\r\nreason why the Ezomytes chose to\r\nstop their flight and settle in Phaaryl.",
+   "levelRequired": 55,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 0.473,
+   "listingCount": 12,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 233.4,
+    "data": [
+     null,
+     0,
+     560.4,
+     null,
+     229.9,
+     null,
+     233.4
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds (16-20) to (23-27) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "+15% to [Critical|Critical Hit] Chance",
+     "optional": false,
+     "statIds": [
+      "local_critical_strike_chance"
+     ]
+    },
+    {
+     "text": "10% reduced [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+10 to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "[Maim] on [Critical|Critical Hit]",
+     "optional": false,
+     "statIds": [
+      "local_always_maim_on_crit"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Physical] Damage: (233-323)-(316-435)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 25%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 0.99",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 97",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 18,
+   "itemId": "Guiding Palm of the Heart Shrine Sceptre",
+   "detailsId": "guiding-palm-of-the-heart-shrine-sceptre",
+   "name": "Guiding Palm of the Heart",
+   "baseType": "Shrine Sceptre",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9TY2VwdGVycy9VbmlxdWVzL0d1aWRpbmdQYWxtRmlyZSIsInciOjIsImgiOjMsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/b0f8b93adf/GuidingPalmFire.png",
+   "flavourText": "\"Power of the Red Pyre! Flaming Heart of the Hive!\r\nI release your burning message to rest here, forevermore.\"\r\nThe Dreamer declared, casting out the lingering dark embers within him.",
+   "levelRequired": 78,
+   "category": "[Sceptre]",
+   "primaryValue": 0.4204,
+   "listingCount": 1188,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 40.74,
+    "data": [
+     null,
+     0,
+     -30.3,
+     null,
+     74.09,
+     null,
+     40.74
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "[Gain] 25% of Damage as Extra [Fire] Damage",
+     "optional": false,
+     "statIds": [
+      "non_skill_base_all_damage_%_to_gain_as_fire"
+     ]
+    },
+    {
+     "text": "[Allies|Allies] in your [Presence|Presence] deal (15-23) to (28-35) added [Attack|Attack] [Fire|Fire] Damage",
+     "optional": false,
+     "statIds": [
+      "allies_in_presence_attack_minimum_added_fire_damage",
+      "allies_in_presence_attack_maximum_added_fire_damage"
+     ]
+    },
+    {
+     "text": "50% of your Base Life Regeneration is granted to [Allies] in your [Presence]",
+     "optional": false,
+     "statIds": [
+      "total_base_life_regeneration_rate_per_minute_%_granted_to_allies_in_your_presence"
+     ]
+    },
+    {
+     "text": "+(20-30) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "25% increased [LightRadius|Light Radius]",
+     "optional": false,
+     "statIds": [
+      "light_radius_+%"
+     ]
+    },
+    {
+     "text": "Grants effect of [UniqueShrineFire|Guided Meteoric Shrine]",
+     "optional": false,
+     "statIds": [
+      "has_unique_fire_shrine_effect"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Spirit]: (100-115)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 17",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 38",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (14-19) Purity of Fire",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 437,
+   "itemId": "Hrimnor's Hymn Runeforged Oak Greathammer",
+   "detailsId": "hrimnors-hymn-runeforged-oak-greathammer",
+   "name": "Hrimnor's Hymn",
+   "baseType": "Runeforged Oak Greathammer",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Ud29IYW5kTWFjZXMvVW5pcXVlcy9Icmltbm9yc0h5bW4iLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/d37a6c8bd3/HrimnorsHymn.png",
+   "flavourText": "\"The crack of bone, the spray of blood.\r\nIs there sweeter music?\"\r\n- Hrimnor of the Ezomytes.",
+   "levelRequired": 38,
+   "category": "[Mace|Two Hand Mace]",
+   "primaryValue": 0.3373,
+   "listingCount": 26,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 17.93,
+    "data": [
+     null,
+     0,
+     15.88,
+     null,
+     16.53,
+     null,
+     17.93
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "Causes (20-40)% increased [Stun|Stun] Buildup",
+     "optional": false,
+     "statIds": [
+      "local_hit_damage_stun_multiplier_+%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "(80-120)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "+(10-15) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "Gain (10-20) Life per enemy killed",
+     "optional": false,
+     "statIds": [
+      "base_life_gained_on_enemy_death"
+     ]
+    },
+    {
+     "text": "[Slam] Skills you use yourself cause an additional [Aftershock]",
+     "optional": false,
+     "statIds": [
+      "your_slam_aftershock_chance_%"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (131-187)-(243-346)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: (13-26)-(16-32)",
+     "optional": true
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 38",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 68",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 448,
+   "itemId": "Sylvan's Effigy Stoic Sceptre",
+   "detailsId": "sylvans-effigy-stoic-sceptre",
+   "name": "Sylvan's Effigy",
+   "baseType": "Stoic Sceptre",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9TY2VwdGVycy9VbmlxdWVzL1BhY2tsZWFkZXIiLCJ3IjoyLCJoIjozLCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/28b19e0530/Packleader.png",
+   "flavourText": "Darkness howls through ancient bones, a wistful cry\r\non hollow winds. The moon listens. The pack gathers.",
+   "levelRequired": 78,
+   "category": "[Sceptre]",
+   "primaryValue": 0.3153,
+   "listingCount": 6129,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 2.04,
+    "data": [
+     null,
+     0,
+     34.76,
+     null,
+     0.97,
+     null,
+     2.04
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "(50-74)% increased [Spirit|Spirit]",
+     "optional": false,
+     "statIds": [
+      "local_spirit_+%"
+     ]
+    },
+    {
+     "text": "[Allies|Allies] in your [Presence|Presence] Regenerate (50.1-99.9) Life per second",
+     "optional": false,
+     "statIds": [
+      "allies_in_presence_life_regeneration_rate_per_minute"
+     ]
+    },
+    {
+     "text": "+(6-12) to all [Attributes|Attributes]",
+     "optional": false,
+     "statIds": [
+      "additional_all_attributes"
+     ]
+    },
+    {
+     "text": "[Companion|Companions] deal (50-100)% increased damage to your [Mark|Marked] targets",
+     "optional": false,
+     "statIds": [
+      "companions_you_control_gain_damage_+%_against_enemies_marked_by_you"
+     ]
+    },
+    {
+     "text": "You can have any number of [Companion|Companions] of different types",
+     "optional": false,
+     "statIds": [
+      "can_have_unlimited_companions"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Spirit]: (150-174)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 62",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 12",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (17-19) Discipline",
+     "optional": false
+    },
+    {
+     "text": "Level (17-19) Azmerian Wolf",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 552,
+   "itemId": "Periphery Heartwood Shortbow",
+   "detailsId": "periphery-heartwood-shortbow",
+   "name": "Periphery",
+   "baseType": "Heartwood Shortbow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Cb3dzL1VuaXF1ZXMvRmx1dHRlcm1vdGgiLCJ3IjoyLCJoIjo0LCJzY2FsZSI6MSwicmVhbG0iOiJwb2UyIn1d/65765c2e9d/Fluttermoth.png",
+   "flavourText": "As the Maji approached the edge of Nothingness, she strung \r\nfragments of the Wildwood's carcass together. When she \r\nnocked her arrow, she pulled upon the elements of life itself.",
+   "levelRequired": 84,
+   "category": "[Bow]",
+   "primaryValue": 0.3153,
+   "listingCount": 910,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 2.04,
+    "data": [
+     null,
+     0,
+     1.07,
+     null,
+     0.97,
+     null,
+     2.04
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "Adds (48-59) to (75-97) [Fire|Fire] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_fire_damage",
+      "local_maximum_added_fire_damage"
+     ]
+    },
+    {
+     "text": "Adds (35-53) to (65-80) [Cold|Cold] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_cold_damage",
+      "local_maximum_added_cold_damage"
+     ]
+    },
+    {
+     "text": "Adds (1-8) to (123-152) [Lightning|Lightning] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_lightning_damage",
+      "local_maximum_added_lightning_damage"
+     ]
+    },
+    {
+     "text": "(8-14)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "[ElementalDamage|Elemental Damage] from [Hit|Hits] [Contributes|Contributes] to [Flammability], [Ignite], and [Chill] [BuffMagnitude|Magnitudes], [Freeze] Buildup, and [Shock] Chance",
+     "optional": false,
+     "statIds": [
+      "elemental_damage_also_contributes_to_flammability_ignite_chill_freeze_and_shock"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (41-56)-(76-103)",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: (48-59)-(75-97)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: (35-53)-(65-80)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.35-1.43)",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-8)-(123-152)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 67",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 134",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (18-20) Azmerian Swarms",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 563,
+   "itemId": "Tyranny's Grip Runemastered Ironhead Spear",
+   "detailsId": "tyrannys-grip-runemastered-ironhead-spear",
+   "name": "Tyranny's Grip",
+   "baseType": "Runemastered Ironhead Spear",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kU3BlYXJzL1VuaXF1ZXMvQXJtc0xlbmd0aCIsInciOjEsImgiOjQsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/8e44f1d1ac/ArmsLength.png",
+   "flavourText": "The might of the Eternal Empire was formidable,\r\nbut rebels of every culture stood together as one.",
+   "levelRequired": 55,
+   "category": "[Spear]",
+   "primaryValue": 0.3048,
+   "listingCount": 341,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -1.36,
+    "data": [
+     null,
+     0,
+     1.07,
+     null,
+     -2.39,
+     null,
+     -1.36
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "(150-200)% increased [Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_physical_damage_+%",
+      "local_weapon_no_physical_damage"
+     ]
+    },
+    {
+     "text": "(10-15)% reduced [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(15-30) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "[Strike|Strikes] deal [MeleeSplash|Splash Damage]",
+     "optional": false,
+     "statIds": [
+      "melee_splash"
+     ]
+    },
+    {
+     "text": "[Knockback|Knocks Back] Enemies on [Hit]",
+     "optional": false,
+     "statIds": [
+      "local_knockback"
+     ]
+    },
+    {
+     "text": "Cannot use [Projectile] [Attack|Attacks]",
+     "optional": false,
+     "statIds": [
+      "local_cannot_be_thrown"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (235-298)-(318-403)",
+     "optional": false
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: (1.06-1.13)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: (31-61)",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: (45-76)",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 677,
+   "itemId": "Brynhand's Mark Runemastered Wooden Club",
+   "detailsId": "brynhands-mark-runemastered-wooden-club",
+   "name": "Brynhand's Mark",
+   "baseType": "Runemastered Wooden Club",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9PbmVIYW5kTWFjZXMvVW5pcXVlcy9CcnluaGFuZHNNYXJrIiwidyI6MiwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/d781b9c623/BrynhandsMark.png",
+   "flavourText": "The mark of the smith was widely known.",
+   "levelRequired": 55,
+   "category": "[Mace|One Hand Mace]",
+   "primaryValue": 0.224,
+   "listingCount": 3,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -77.6,
+    "data": [
+     null,
+     0,
+     -71.67,
+     null,
+     -77.68,
+     null,
+     -77.6
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(20-30)% increased Area of Effect for [Attack|Attacks]",
+     "optional": false,
+     "statIds": [
+      "attack_area_of_effect_+%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "Adds (10-14) to (16-20) [Physical|Physical] Damage",
+     "optional": false,
+     "statIds": [
+      "local_minimum_added_physical_damage",
+      "local_maximum_added_physical_damage"
+     ]
+    },
+    {
+     "text": "+(30-50) to [Accuracy|Accuracy] Rating",
+     "optional": false,
+     "statIds": [
+      "local_accuracy_rating"
+     ]
+    },
+    {
+     "text": "20% reduced [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+(11-20) to [Strength|Strength]",
+     "optional": false,
+     "statIds": [
+      "additional_strength"
+     ]
+    },
+    {
+     "text": "Causes Double [Stun|Stun] Buildup",
+     "optional": false,
+     "statIds": [
+      "local_double_hit_damage_stun_build_up"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (142-172)-(236-283)",
+     "optional": false
+    },
+    {
+     "text": "[Cold|Cold] Damage: 9-15",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "Attacks per Second: 1.16",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 55",
+     "optional": false
+    },
+    {
+     "text": "[Strength|Str]: 97",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 758,
+   "itemId": "Ironbound Runeforged Warden Bow",
+   "detailsId": "ironbound-runeforged-warden-bow",
+   "name": "Ironbound",
+   "baseType": "Runeforged Warden Bow",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9Ud29IYW5kV2VhcG9ucy9Cb3dzL1VuaXF1ZXMvSXJvbmJvdW5kIiwidyI6MiwiaCI6NCwic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/09f0e9dce9/Ironbound.png",
+   "flavourText": "Each crest was a Thane's word, bolted to Ivor's bow.\r\nThey would join the Count's side, or die by his hands.",
+   "levelRequired": 40,
+   "category": "[Bow]",
+   "primaryValue": 0.2146,
+   "listingCount": 44,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": 2.9,
+    "data": [
+     null,
+     0,
+     -35.11,
+     null,
+     -0.26,
+     null,
+     2.9
+    ]
+   },
+   "implicitModifiers": [
+    {
+     "text": "(25-35)% chance to [Chain] an additional time",
+     "optional": false,
+     "statIds": [
+      "local_additional_attack_chain_chance_%"
+     ]
+    }
+   ],
+   "explicitModifiers": [
+    {
+     "text": "+(101-150) to [Armour]",
+     "optional": false,
+     "statIds": [
+      "base_physical_damage_reduction_rating"
+     ]
+    },
+    {
+     "text": "(5-10)% increased [Attack] Speed",
+     "optional": false,
+     "statIds": [
+      "local_attack_speed_+%"
+     ]
+    },
+    {
+     "text": "+12% to [Block] chance",
+     "optional": false,
+     "statIds": [
+      "additional_block_%"
+     ]
+    },
+    {
+     "text": "(3-5)% increased [Block] chance per 100 total [ItemArmour|Item Armour] on [EquipArmour|Equipped Armour Items]",
+     "optional": false,
+     "statIds": [
+      "block_chance_+X%_per_100_base_armour_on_armours"
+     ]
+    },
+    {
+     "text": "Hits with this weapon have (1-2) to (4-5) Added [Physical|Physical] Damage per 1% [ChanceToBlock|Block Chance]",
+     "optional": false,
+     "statIds": [
+      "main_hand_attacks_with_this_weapon_minimum_added_physical_damage_per_1%_block_chance",
+      "main_hand_attacks_with_this_weapon_maximum_added_physical_damage_per_1%_block_chance"
+     ]
+    },
+    {
+     "text": "Arrows [Return] if they have [Pierce|Pierced] a target which had [ArmourBreak|Fully Broken Armour]",
+     "optional": false,
+     "statIds": [
+      "arrow_projectiles_return_if_they_have_pierced_a_fully_armour_broken_target"
+     ]
+    }
+   ],
+   "propertyModifiers": [
+    {
+     "text": "[Physical] Damage: (38-50)-(63-83)",
+     "optional": false
+    },
+    {
+     "text": "[Lightning|Lightning] Damage: (1-2)-(20-60)",
+     "optional": true
+    },
+    {
+     "text": "[Critical|Critical Hit] Chance: 5%",
+     "optional": false
+    },
+    {
+     "text": "[Fire|Fire] Damage: 13-16",
+     "optional": true
+    },
+    {
+     "text": "Attacks per Second: (1.21-1.27)",
+     "optional": false
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: (40-50)",
+     "optional": false
+    },
+    {
+     "text": "[Dexterity|Dex]: 72",
+     "optional": false
+    }
+   ]
+  },
+  {
+   "id": 20,
+   "itemId": "Adonia's Ego Siphoning Wand",
+   "detailsId": "adonias-ego-siphoning-wand",
+   "name": "Adonia's Ego",
+   "baseType": "Siphoning Wand",
+   "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvV2VhcG9ucy9PbmVIYW5kV2VhcG9ucy9XYW5kcy9VbmlxdWVzL0NvdXJ0bHlEaXNjb3JkIiwidyI6MSwiaCI6Mywic2NhbGUiOjEsInJlYWxtIjoicG9lMiJ9XQ/761ae3ed19/CourtlyDiscord.png",
+   "flavourText": "Adonia rose with eyes afire, emanating a ghastly aura, and\r\nbroke off a carving from the wall of the Throne Room.\r\n\"You think me powerless without my wand? Insult me again!\"",
+   "levelRequired": 78,
+   "category": "[Wand]",
+   "primaryValue": 0.2102,
+   "listingCount": 3111,
+   "corrupted": false,
+   "sparkLine": {
+    "totalChange": -31.97,
+    "data": [
+     null,
+     0,
+     -32.62,
+     null,
+     -36.05,
+     null,
+     -31.97
+    ]
+   },
+   "explicitModifiers": [
+    {
+     "text": "+(100-150) to maximum Mana",
+     "optional": false,
+     "statIds": [
+      "base_maximum_mana"
+     ]
+    },
+    {
+     "text": "+3 to Level of all [Spell|Spell] Skills",
+     "optional": false,
+     "statIds": [
+      "spell_skill_gem_level_+"
+     ]
+    },
+    {
+     "text": "(15-30)% increased Cast Speed",
+     "optional": false,
+     "statIds": [
+      "base_cast_speed_+%"
+     ]
+    },
+    {
+     "text": "-10% to all [ElementalDamage|Elemental] [Resistances] per [Charges|Power Charge]",
+     "optional": false,
+     "statIds": [
+      "resist_all_elements_%_per_power_charge"
+     ]
+    },
+    {
+     "text": "+(-1-1) to Maximum [Charges|Power Charges]",
+     "optional": true,
+     "statIds": [
+      "max_power_charges"
+     ]
+    }
+   ],
+   "requirementModifiers": [
+    {
+     "text": "Level: 65",
+     "optional": false
+    },
+    {
+     "text": "[Intelligence|Int]: 23",
+     "optional": false
+    }
+   ],
+   "grantedSkillModifiers": [
+    {
+     "text": "Level (14-19) Power Siphon",
+     "optional": false
+    }
+   ]
+  }
+ ]
+}

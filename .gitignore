@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# runtime artifacts
+ninjaalert.log*
+alert.wav
+
+# IDE
+.vscode/
+.idea/
