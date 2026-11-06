@@ -22,9 +22,7 @@ import logging
 import logging.handlers
 import os
 import sys
-import time
 from datetime import date
-from pathlib import Path
 from typing import Dict, Optional
 
 from PyQt6.QtCore import QObject, Qt
@@ -32,15 +30,10 @@ from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from analyzer import Alert, AnomalyDetector
+from analyzer import Alert
+from analysis_worker import AnalysisWorker
 from api_client import NinjaApiClient
 from appconfig import Config, app_dir, config_path
-from advanced_analyzer import (
-    AnalysisPipeline,
-    anomaly_from_basic,
-    ticks_from_quotes,
-)
-from models import Snapshot
 from poller import PollWorker
 from ui_overlay import ToastManager
 from ui_settings import SettingsWindow
@@ -156,8 +149,7 @@ class NinjaAlertController(QObject):
         self._toasts = ToastManager(lambda: self._cfg, base)
 
         self._pollers: Dict[str, PollWorker] = {}
-        self._pipelines: Dict[str, AnalysisPipeline] = {}
-        self._basics: Dict[str, AnomalyDetector] = {}
+        self._worker: Optional[AnalysisWorker] = None
         self._icon_map: Dict[str, str] = {}
         self._meta_league: Dict[str, str] = {}       # league seen in latest meta per game
         self._current_league: Dict[str, str] = {}    # league from leagues endpoint
@@ -166,7 +158,7 @@ class NinjaAlertController(QObject):
         self._last_detail = ""
         self._greeted = False
 
-        self._build_engines()
+        self._build_worker()
         self._build_pollers()
         self._build_tray()
 
@@ -183,19 +175,19 @@ class NinjaAlertController(QObject):
             return first
         return ""
 
-    def _build_engines(self) -> None:
-        cfg = self._cfg
-        for game in ("poe1", "poe2"):
-            db_path = Path(app_dir()) / f"history-{game}.sqlite3"
-            self._pipelines[game] = AnalysisPipeline(
-                cfg.detector, cfg.alerts, self._league_start_fn, db_path)
-            self._basics[game] = AnomalyDetector(cfg.thresholds)
+    def _build_worker(self) -> None:
+        """All engine state (pipelines + basic detectors) lives on the worker
+        thread - warm-start replay and per-snapshot analysis never block the GUI."""
+        self._worker = AnalysisWorker(self._cfg, self._league_start_fn)
+        self._worker.analyzed.connect(self._on_analyzed)
+        self._worker.note.connect(self._on_worker_note)
 
     def _build_pollers(self) -> None:
         for game in ("poe1", "poe2"):
             client = NinjaApiClient(
                 user_agent_fn=lambda: self._cfg.user_agent,
                 base_url_fn=lambda: self._cfg.network.base_url,
+                timeout_fn=lambda: self._cfg.network.timeout_s,
             )
             worker = PollWorker(client, self._cfg, game)
             worker.snapshot.connect(lambda q, m, g=game: self._on_snapshot(g, q, m))
@@ -234,6 +226,8 @@ class NinjaAlertController(QObject):
 
     # ------------------------------------------------------------- lifecycle
     def start(self) -> None:
+        if self._worker is not None and not self._worker.isRunning():
+            self._worker.start()
         for worker in self._pollers.values():
             worker.start()
         if not self._greeted:
@@ -269,9 +263,10 @@ class NinjaAlertController(QObject):
         try:
             for worker in self._pollers.values():
                 worker.stop()
-            self._webhook.stop()
-            for pipeline in self._pipelines.values():
-                pipeline.close()
+            if self._worker is not None:
+                self._worker.stop()
+                self._worker.wait(8000)    # drains the queue, closes the stores
+            self._webhook.stop()           # joins the sender thread
         except Exception:
             log.exception("shutdown failed")
         if self._settings is not None:
@@ -300,64 +295,51 @@ class NinjaAlertController(QObject):
             log.warning("manual league refresh failed: %s", exc)
 
     def _on_settings_saved(self, cfg: Config) -> None:
-        prev_engine = self._cfg.detector.engine
         self._cfg = cfg
         try:
             cfg.save(config_path())
         except Exception as exc:
             log.warning("could not persist config: %s", exc)
-        for game in ("poe1", "poe2"):
-            self._basics[game].update_thresholds(cfg.thresholds)
-        if cfg.detector.engine != prev_engine and cfg.detector.engine == "auto":
-            # switching back to auto: robust baselines may need reseeding
-            for pipeline in self._pipelines.values():
-                pipeline.analyzer.reset()
+        if self._worker is not None:
+            self._worker.apply_config(cfg)   # engine swap/reset handled on the worker
         for worker in self._pollers.values():
             worker.apply_config(cfg)
         log.info("settings applied (engine=%s)", cfg.detector.engine)
 
     # ---------------------------------------------------------- engine feed
     def _on_snapshot(self, game: str, quotes, meta) -> None:
+        """Light GUI-thread hand-off: icon cache + league tracking only; the
+        heavy analysis runs on AnalysisWorker (queued, FIFO with resets)."""
         try:
-            cfg = self._cfg
-            now = time.time()
             for q in quotes:
                 if q.icon:
                     self._icon_map[q.key] = q.icon
 
-            # league switch (rollover or manual) -> reseed both engines
+            # league switch (rollover or manual) -> reseed engines before feeding
             if self._meta_league.get(game) and self._meta_league[game] != meta.league:
                 log.info("league changed for %s: %s -> %s; resetting engines",
                          game, self._meta_league[game], meta.league)
-                self._pipelines[game].analyzer.reset()
-                self._pipelines[game].governor.reset()
-                self._basics[game].reset()
+                self._worker.reset_game(game)
             self._meta_league[game] = meta.league
 
-            ticks = ticks_from_quotes(quotes, now)
-            snap = Snapshot(game=game, category=f"{game}:{meta.source}:{meta.category}",
-                            league=meta.league, ts=now, source="documented",
-                            ticks=tuple(ticks))
-
-            engine = cfg.detector.engine
-            pipeline = self._pipelines[game]
-            if engine == "basic":
-                pipeline.store.append(ticks)
-                basic = self._basics[game].feed(quotes, meta, now)
-                anomalies = [anomaly_from_basic(a, meta.league) for a in basic]
-                shown, digest = pipeline.governor.decide(anomalies)
-            else:  # auto: robust engine + basic warmup fallback
-                basic = self._basics[game].feed(quotes, meta, now)
-                extra = [anomaly_from_basic(a, meta.league)
-                         for a in basic if a.key not in pipeline.analyzer.ready_keys]
-                shown, digest = pipeline.handle(snap, extra_anomalies=extra)
-
-            for a in shown:
-                self._dispatch_alert(a, meta)
-            if digest is not None:
-                self._toasts.show_digest(digest, game, meta.league)
+            self._worker.submit_snapshot(game, quotes, meta)
         except Exception:
-            log.exception("snapshot processing failed (%s)", game)
+            log.exception("snapshot hand-off failed (%s)", game)
+
+    def _on_analyzed(self, result: dict) -> None:
+        """Worker -> GUI dispatch: toasts, journal, webhook."""
+        try:
+            meta = result["meta"]
+            for a in result["shown"]:
+                self._dispatch_alert(a, meta)
+            if result["digest"] is not None:
+                self._toasts.show_digest(result["digest"], result["game"], meta.league)
+        except Exception:
+            log.exception("alert dispatch failed")
+
+    def _on_worker_note(self, text: str) -> None:
+        log.info("engine: %s", text)
+        self._last_detail = text
 
     def _dispatch_alert(self, a, meta) -> None:
         parts = a.key.split(":")
@@ -399,9 +381,7 @@ class NinjaAlertController(QObject):
                 self._cfg.save(config_path())
             except Exception:
                 log.warning("could not persist leagues_seen", exc_info=True)
-            self._pipelines[game].analyzer.reset()
-            self._pipelines[game].governor.reset()
-            self._basics[game].reset()
+            self._worker.reset_game(game)
             self._tray.showMessage(
                 "New league detected",
                 f"{game}: {current} — baselines reseeded from scratch.",
@@ -437,10 +417,11 @@ class NinjaAlertController(QObject):
         self._tray.setIcon(render_tray_icon(
             {"error": "error", "paused": "paused"}.get(aggregate, "ok")))
         if aggregate in ("waiting", "fetching"):
-            self._tray.setToolTip(
-                f"NinjaAlert — monitoring "
-                f"({sum(p.analyzer.tracked_count for p in self._pipelines.values())} "
-                f"robust + {sum(b.tracked_count for b in self._basics.values())} basic items)")
+            stats = self._worker.stats() if self._worker is not None else {}
+            robust = sum(s[0] for s in stats.values())
+            basic = sum(s[1] for s in stats.values())
+            self._tray.setToolTip(f"NinjaAlert — monitoring "
+                                  f"({robust} robust + {basic} basic items)")
         if self._settings is not None:
             self._settings.set_state(aggregate, f"{game}: {self._last_detail}")
 

@@ -135,6 +135,17 @@ class AnomalyAnalyzer:
         self._league_start = league_start_fn
         self._states: Dict[str, _ItemState] = {}
         self.ready_keys: set = set()   # keys with a completed robust baseline (auto-mode glue)
+        self._weights: Optional[List[float]] = None   # calibrated override (see calibration.py)
+        self._bias: Optional[float] = None
+
+    @property
+    def tracked_count(self) -> int:
+        return len(self._states)
+
+    def set_weights(self, weights: List[float], bias: float) -> None:
+        """Install refit weights (in-app auto-calibration) without touching the config."""
+        self._weights = [float(w) for w in weights]
+        self._bias = float(bias)
 
     # -- one update step shared by live processing and warm start
     def _advance(self, st: _ItemState, tick: ItemTick, hf: float, hs: float) -> Optional[_Metrics]:
@@ -147,6 +158,8 @@ class AnomalyAnalyzer:
         lp = math.log(tick.price)
         r = lp - math.log(st.last_price)
         rt = r / math.sqrt(dt_h)           # scaled to a one-hour unit
+        if not (math.isfinite(lp) and math.isfinite(rt)):
+            return None                    # non-finite input must not poison the baseline
 
         ready = len(st.rt) >= c.min_history
         if ready:
@@ -204,18 +217,21 @@ class AnomalyAnalyzer:
         """Replay stored history to rebuild baselines without emitting anomalies."""
         count = 0
         for tick in sorted(ticks, key=lambda t: t.ts):
-            t_days = self.phase.league_day(now or tick.ts,
-                                           self._league_start(tick.key.split(":", 1)[0]))
-            hf, hs = self.phase.half_lives(t_days)
-            st = self._states.get(tick.key)
-            if st is None or (tick.ts - st.last_ts) / 3600.0 > self.cfg.max_gap_hours:
-                self._states[tick.key] = self._fresh(tick)
-            else:
-                self._advance(st, tick, hf, hs)
+            try:
+                t_days = self.phase.league_day(now or tick.ts,
+                                               self._league_start(tick.key.split(":", 1)[0]))
+                hf, hs = self.phase.half_lives(t_days)
+                st = self._states.get(tick.key)
+                if st is None or (tick.ts - st.last_ts) / 3600.0 > self.cfg.max_gap_hours:
+                    self._states[tick.key] = self._fresh(tick)
+                else:
+                    self._advance(st, tick, hf, hs)
+            except (TypeError, ValueError, OverflowError):
+                continue                   # corrupt stored row must not kill warm start
             count += 1
         return count
 
-    def process(self, snap: Snapshot) -> List[Anomaly]:
+    def process(self, snap: Snapshot, collect: Optional[list] = None) -> List[Anomaly]:
         c = self.cfg
         t_days = self.phase.league_day(snap.ts, self._league_start(snap.game))
         z_star = self.phase.z_threshold(t_days)
@@ -248,14 +264,16 @@ class AnomalyAnalyzer:
 
         out: List[Anomaly] = []
         for tick, prev, m in rows:
-            if abs(m.z_adj) < z_star or abs(m.r) < c.min_log_move:
-                continue
             direction = 1 if m.z_adj > 0 else -1
             breadth: Optional[float] = None
             if peers >= c.breadth_min_peers:
                 same = (pos if direction > 0 else neg) - 1    # exclude the item itself
                 breadth = max(0, same) / peers
             manip = self._manipulation(m, breadth)
+            if collect is not None:
+                collect.append((self._features(m, breadth), manip))
+            if abs(m.z_adj) < z_star or abs(m.r) < c.min_log_move:
+                continue
             label = ("SUSPECT" if manip >= c.suspect_at
                      else "ORGANIC" if manip <= c.organic_at else "AMBIGUOUS")
             rv = m.rvol if m.rvol is not None else 1.0
@@ -272,7 +290,8 @@ class AnomalyAnalyzer:
         out.sort(key=lambda a: a.priority, reverse=True)
         return out
 
-    def _manipulation(self, m: _Metrics, breadth: Optional[float]) -> float:
+    def _features(self, m: _Metrics, breadth: Optional[float]) -> Tuple[float, ...]:
+        """Six normalized manipulation features in [0, 1] (spec section 4)."""
         c = self.cfg
         f1 = 1.0 - m.w_l
         f2 = _clip(1.0 - m.rvol / c.rvol_ref, 0.0, 1.0) if m.rvol is not None else c.no_volume_prior
@@ -280,13 +299,24 @@ class AnomalyAnalyzer:
         f4 = _clip(m.basis / c.basis_saturation, 0.0, 1.0) if m.basis is not None else 0.0
         f5 = 0.0 if m.confirmed else 1.0
         f6 = 1.0 - breadth if breadth is not None else 0.5
-        features = (f1, f2, f3, f4, f5, f6)
-        return _sigmoid(c.bias + sum(w * f for w, f in zip(c.weights, features)))
+        return (f1, f2, f3, f4, f5, f6)
+
+    def _manipulation(self, m: _Metrics, breadth: Optional[float]) -> float:
+        features = self._features(m, breadth)
+        w = self._weights if self._weights is not None else self.cfg.weights
+        b = self._bias if self._bias is not None else self.cfg.bias
+        return _sigmoid(b + sum(wi * f for wi, f in zip(w, features)))
 
 
 # ------------------------------------------------------------------ persistence
 class HistoryStore:
-    """SQLite tick history (WAL). Lets the detector warm-start and lets you refit parameters."""
+    """SQLite tick history (WAL + busy_timeout + ts index).
+
+    Lets the detector warm-start and lets you refit parameters (calibration.py).
+    The explicit ``idx_ticks_ts`` index serves the ``WHERE ts >= ?`` range scans
+    (load_since / prune); warm start itself replays full rows, so aggregation
+    is deliberately kept in SQL-free Python where per-item EMA state is built.
+    """
 
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -294,9 +324,14 @@ class HistoryStore:
         self._con = sqlite3.connect(str(path), check_same_thread=False)
         self._con.execute("PRAGMA journal_mode=WAL")
         self._con.execute("PRAGMA synchronous=NORMAL")
+        self._con.execute("PRAGMA busy_timeout=5000")
+        self._con.execute("PRAGMA cache_size=-65536")     # 64 MB page cache
+        self._con.execute("PRAGMA mmap_size=134217728")   # 128 MB memory-mapped I/O
         self._con.execute(
             "CREATE TABLE IF NOT EXISTS ticks (key TEXT, ts REAL, name TEXT, category TEXT, "
             "price REAL, volume REAL, listings REAL, aux REAL, PRIMARY KEY (key, ts))")
+        # the implicit PK index leads with `key`, so time-range queries need their own
+        self._con.execute("CREATE INDEX IF NOT EXISTS idx_ticks_ts ON ticks(ts)")
         self._con.commit()
 
     def append(self, ticks: Iterable[ItemTick]) -> None:
@@ -409,13 +444,22 @@ class AnalysisPipeline:
             self.store.load_since(time.time() - detector_cfg.history_retention_days * 86400.0))
         log.info("Warm start replayed %d stored ticks (%s)", loaded, db_path.name)
 
+    def ingest(self, ticks: Iterable[ItemTick]) -> None:
+        """Storage-only path (basic engine): append + the same hourly prune guard
+        that `handle` applies, so the DB cannot grow unbounded in basic mode."""
+        self.store.append(ticks)
+        self._maybe_prune()
+
+    def _maybe_prune(self) -> None:
+        if time.time() - self._last_prune > 3600.0:
+            self.store.prune(time.time() - self.cfg.history_retention_days * 86400.0)
+            self._last_prune = time.time()
+
     def handle(self, snap: Snapshot,
                extra_anomalies: Optional[List[Anomaly]] = None
                ) -> Tuple[List[Anomaly], Optional[Digest]]:
         self.store.append(snap.ticks)
-        if time.time() - self._last_prune > 3600.0:
-            self.store.prune(time.time() - self.cfg.history_retention_days * 86400.0)
-            self._last_prune = time.time()
+        self._maybe_prune()
         anomalies = self.analyzer.process(snap)
         if extra_anomalies:
             anomalies = list(anomalies) + list(extra_anomalies)
@@ -438,16 +482,20 @@ def ticks_from_quotes(quotes, ts: float) -> List[ItemTick]:
     for q in quotes:
         try:
             price = float(q.price)
-            if price <= 0:
+            if not math.isfinite(price) or price <= 0:
                 continue
+            # a NaN/inf in any secondary field would poison medians/EMAs downstream
+            volume = float(q.volume) if getattr(q, "volume", None) is not None else None
+            listings = float(q.list_count) if q.list_count is not None else None
+            aux = float(q.aux) if getattr(q, "aux", None) is not None else None
             ticks.append(ItemTick(
                 key=str(q.key),
                 name=str(q.name),
                 category=f"{q.game}:{q.source}:{q.category}",
                 price=price,
-                volume=float(q.volume) if getattr(q, "volume", None) is not None else None,
-                listings=float(q.list_count) if q.list_count is not None else None,
-                aux=float(q.aux) if getattr(q, "aux", None) is not None else None,
+                volume=volume if volume is None or math.isfinite(volume) else None,
+                listings=listings if listings is None or math.isfinite(listings) else None,
+                aux=aux if aux is None or math.isfinite(aux) else None,
                 ts=ts,
             ))
         except (TypeError, ValueError, AttributeError):

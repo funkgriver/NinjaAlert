@@ -392,6 +392,190 @@ def test_advanced() -> None:
         check("advanced: suite ran", False, traceback.format_exc(limit=4))
 
 
+# ------------------------------------------------- hardening (audit) tests
+def test_hardening() -> None:
+    print("== hardening (finite guards, sqlite, api retry) ==")
+    try:
+        import random
+        from pathlib import Path
+        import tempfile
+
+        import api_client as ac
+        from advanced_analyzer import (AnalysisPipeline, AnomalyAnalyzer, HistoryStore,
+                                       ticks_from_quotes)
+        from api_client import ApiError, ItemQuote, NinjaApiClient
+        from appconfig import Config, DetectorCfg
+        from models import ItemTick
+
+        # ---- finite guards --------------------------------------------------
+        def quote(key, price=1.0, volume=5.0, lc=None, aux=None):
+            return ItemQuote(key=f"poe1:x:Currency:{key}", name="Q", game="poe1",
+                             category="Currency", source="exchange", price=price,
+                             list_count=lc, icon=None, details_id=key,
+                             volume=volume, aux=aux)
+
+        ticks = ticks_from_quotes([
+            quote("q1", price=float("nan")), quote("q2", price=0.0),
+            quote("q3", volume=float("inf")), quote("q4", aux=float("nan")),
+            quote("q5", price=-3.0), quote("q6")], 1.0)
+        got = [t.key.rsplit(":", 1)[-1] for t in ticks]
+        check("guards: non-positive/NaN prices dropped", got == ["q3", "q4", "q6"], str(got))
+        check("guards: inf volume -> None", ticks[0].volume is None)
+        check("guards: NaN aux -> None", ticks[1].aux is None)
+
+        an = AnomalyAnalyzer(DetectorCfg(), lambda g: "")
+        t0 = 1_000_000.0
+        good = ItemTick(key="k", name="K", category="poe1:x:Currency", price=100.0,
+                        volume=None, listings=None, aux=None, ts=t0)
+        st = an._fresh(good)
+        bad = ItemTick(key="k", name="K", category="poe1:x:Currency", price=float("nan"),
+                       volume=None, listings=None, aux=None, ts=t0 + 900.0)
+        check("guards: _advance rejects NaN price", an._advance(st, bad, 4.0, 24.0) is None)
+        check("guards: baseline state untouched by NaN",
+              st.last_price == 100.0 and not st.rt)
+
+        # ---- sqlite hardening -----------------------------------------------
+        with tempfile.TemporaryDirectory() as td:
+            store = HistoryStore(Path(td) / "h.sqlite3")
+            mode = store._con.execute("PRAGMA journal_mode").fetchone()[0]
+            check("sqlite: journal_mode=wal", str(mode).lower() == "wal", str(mode))
+            idx = store._con.execute("SELECT name FROM sqlite_master WHERE type='index' "
+                                     "AND name='idx_ticks_ts'").fetchone()
+            check("sqlite: idx_ticks_ts created", idx is not None)
+            plan = " ".join(str(r[-1]) for r in store._con.execute(
+                "EXPLAIN QUERY PLAN SELECT * FROM ticks WHERE ts >= ?", (0.0,)).fetchall())
+            check("sqlite: range scan uses idx_ticks_ts", "idx_ticks_ts" in plan, plan)
+            store.close()
+
+            cfgp = Config()
+            pl = AnalysisPipeline(cfgp.detector, cfgp.alerts, lambda g: "",
+                                  Path(td) / "p.sqlite3")
+            pl._last_prune = time.time()       # simulate "just pruned" for determinism
+            pl.ingest([ItemTick(key="old", name="O", category="c", price=1.0, volume=None,
+                                listings=None, aux=None, ts=1_000_000.0)])
+            check("sqlite: ingest stores ticks", pl.store.count() == 1)
+            pl._last_prune = 0.0               # force the hourly prune on next ingest
+            pl.ingest([ItemTick(key="new", name="N", category="c", price=1.0, volume=None,
+                                listings=None, aux=None, ts=time.time())])
+            rows = pl.store.load_since(0.0)
+            check("sqlite: basic-mode ingest prunes", len(rows) == 1 and rows[0].key == "new",
+                  str([r.key for r in rows]))
+            pl.close()
+
+        # ---- api transport ----------------------------------------------------
+        class FakeResp:
+            def __init__(self, status, payload=None, headers=None):
+                self.status_code = status
+                self._payload = payload
+                self.headers = headers or {}
+                self.history = []
+                self.url = "http://fake"
+
+            def json(self):
+                if isinstance(self._payload, Exception):
+                    raise self._payload
+                return self._payload
+
+        class FakeSession:
+            def __init__(self, responses):
+                self._responses = list(responses)
+                self.calls = 0
+
+            def get(self, url, params=None, headers=None, timeout=None):
+                self.calls += 1
+                item = self._responses[min(self.calls - 1, len(self._responses) - 1)]
+                if isinstance(item, Exception):
+                    raise item
+                return item
+
+        slept: list = []
+        real_sleep = ac.time.sleep
+        ac.time.sleep = lambda s: slept.append(s)
+        try:
+            client = NinjaApiClient()
+            client._sess = FakeSession([FakeResp(500), FakeResp(502), FakeResp(200, {"ok": 1})])
+            resp = client._request("http://fake/x")
+            check("api: 5xx retried then success",
+                  resp.status_code == 200 and client._sess.calls == 3,
+                  f"calls={client._sess.calls}")
+            check("api: backoff sleeps bounded",
+                  2 <= len(slept) and all(0 < s <= ac.MAX_BACKOFF_SECONDS for s in slept),
+                  str(slept))
+
+            slept.clear()
+            client2 = NinjaApiClient()
+            client2._sess = FakeSession([FakeResp(429, headers={"Retry-After": "7"})])
+            raised = None
+            try:
+                client2._request("http://fake/y")
+            except Exception as exc:
+                raised = exc
+            check("api: 429 raises RateLimited after retries",
+                  isinstance(raised, ac.RateLimited), repr(raised))
+            check("api: Retry-After honoured", any(s >= 7.0 for s in slept), str(slept))
+
+            client3 = NinjaApiClient()
+            client3._sess = FakeSession([FakeResp(200, ValueError("bad json"))])
+            raised = None
+            try:
+                client3._json(client3._sess.get("http://fake/z"), "ctx")
+            except Exception as exc:
+                raised = exc
+            check("api: malformed JSON -> ApiError", isinstance(raised, ApiError), repr(raised))
+        finally:
+            ac.time.sleep = real_sleep
+
+        # ---- calibration ------------------------------------------------------
+        from advanced_analyzer import _sigmoid
+        from calibration import (collect_training_rows, fit_logistic,
+                                 pseudo_label, suggest_thresholds)
+
+        xs, ys = [], []
+        rnd = random.Random(11)
+        for _ in range(120):
+            xs.append([rnd.uniform(0.7, 1.0), rnd.uniform(0.6, 1.0), 0.0, 0.0, 1.0, 0.8])
+            ys.append(1)
+            xs.append([rnd.uniform(0.0, 0.3), rnd.uniform(0.0, 0.2), 0.0, 0.0, 0.0, 0.2])
+            ys.append(0)
+        w0, b0 = [1.5, 1.2, 1.5, 1.0, 0.8, 0.6], -3.0
+        res = fit_logistic(xs, ys, w0, b0)
+        check("calib: separable refit accepted", res.improved, res.reason)
+        check("calib: holdout log-loss improved", res.loss_after < res.loss_before,
+              f"{res.loss_before:.4f} -> {res.loss_after:.4f}")
+        check("calib: clamps respected",
+              all(0.0 <= w <= 5.0 for w in res.weights) and -10.0 <= res.bias <= 5.0)
+
+        res_small = fit_logistic(xs[:10], ys[:10], w0, b0)
+        check("calib: min-sample gate keeps params",
+              not res_small.improved and "insufficient" in res_small.reason,
+              res_small.reason)
+
+        lx, ly = pseudo_label([((1.0,) * 6, 0.9), ((0.0,) * 6, 0.1), ((0.5,) * 6, 0.5)],
+                              0.65, 0.35)
+        check("calib: ambiguous rows dropped", len(lx) == 2 and ly == [1, 0], f"{ly}")
+
+        pairs = [(0.9, 1)] * 40 + [(0.1, 0)] * 40
+        s, o, j = suggest_thresholds(pairs, 0.65, 0.35)
+        check("calib: Youden J finds perfect separation",
+              s is not None and abs(s - 0.9) < 1e-9 and j > 0.99, f"{s} {o} {j:.3f}")
+
+        replay = [ItemTick(key="poe1:x:Currency:z", name="Z", category="poe1:x:Currency",
+                           price=100.0, volume=None, listings=50.0, aux=None,
+                           ts=t0 + i * 900.0) for i in range(40)]
+        samples = collect_training_rows(DetectorCfg(), lambda g: "", replay)
+        check("calib: replay collects ready rows", len(samples) >= 10, str(len(samples)))
+        feats, manip = samples[-1]
+        check("calib: sample features normalized",
+              len(feats) == 6 and all(0.0 <= f <= 1.0 for f in feats) and 0.0 <= manip <= 1.0,
+              f"{feats} {manip:.3f}")
+        check("calib: stable history stays organic",
+              _sigmoid(b0 + sum(w * f for w, f in zip(w0, feats))) <= 0.35,
+              f"{manip:.3f}")
+    except Exception:
+        import traceback
+        check("hardening: suite ran", False, traceback.format_exc(limit=4))
+
+
 # ----------------------------------------------------------------------- qt
 def test_qt() -> None:
     print("== qt widgets (offscreen) ==")
@@ -443,6 +627,64 @@ def test_qt() -> None:
         check("qt: widgets constructed", False, traceback.format_exc(limit=3))
 
 
+# -------------------------------------------------------- worker hand-off
+def test_worker() -> None:
+    print("== analysis worker (QThread hand-off) ==")
+    try:
+        import tempfile
+
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication(sys.argv)
+
+        import analysis_worker as aw
+        from analysis_worker import AnalysisWorker
+        from api_client import FetchMeta, ItemQuote
+        from appconfig import Config
+
+        cfg = Config()
+        tmp = tempfile.TemporaryDirectory()
+        real_app_dir = aw.app_dir
+        aw.app_dir = lambda: tmp.name          # isolate history DBs from the app's
+        try:
+            worker = AnalysisWorker(cfg, lambda g: "")
+            results: list = []
+            worker.analyzed.connect(lambda r: results.append(r))
+            worker.start()
+
+            meta = FetchMeta(game="poe1", league="Allflame", category="Currency",
+                             source="exchange", primary="chaos")
+            quotes = [ItemQuote(key=f"poe1:x:Currency:div{i}", name=f"Divine {i}",
+                                game="poe1", category="Currency", source="exchange",
+                                price=100.0 + i, list_count=None, icon=None,
+                                details_id="divine", volume=42.0, aux=0.9)
+                      for i in range(5)]
+            worker.submit_snapshot("poe1", quotes, meta)
+            deadline = time.time() + 10
+            while time.time() < deadline and not results:
+                app.processEvents()
+                time.sleep(0.05)
+            check("worker: analyzed result emitted", len(results) == 1)
+            if results:
+                r = results[0]
+                check("worker: result carries game/meta/shown",
+                      r["game"] == "poe1" and r["meta"] is meta
+                      and isinstance(r["shown"], list))
+            stats = worker.stats()
+            check("worker: stats populated", stats.get("poe1", (0, 0))[1] >= 1, str(stats))
+
+            worker.apply_config(cfg)           # config command path
+            worker.reset_game("poe1")          # rollover reset path
+            worker.stop()
+            worker.wait(8000)
+            check("worker: clean stop closes stores", not worker.isRunning())
+        finally:
+            aw.app_dir = real_app_dir
+            tmp.cleanup()
+    except Exception:
+        import traceback
+        check("worker: suite ran", False, traceback.format_exc(limit=3))
+
+
 # ---------------------------------------------------------------- live api
 def test_live() -> None:
     print("== live poe.ninja ==")
@@ -470,6 +712,8 @@ def main() -> int:
     test_analyzer()
     test_parsers()
     test_advanced()
+    test_hardening()
+    test_worker()
     test_poller()
     test_qt()
     if "--live" in sys.argv:

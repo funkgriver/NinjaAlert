@@ -65,6 +65,8 @@ class WebhookSender:
             self._queue.put_nowait(None)
         except Exception:
             pass
+        if self._thread is not None and self._thread is not threading.current_thread():
+            self._thread.join(timeout=3.0)   # flush pending sends before exit
 
     # ------------------------------------------------------------- worker
     def start(self) -> None:

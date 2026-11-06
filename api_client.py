@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from random import uniform
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 from urllib.parse import urlencode
 
@@ -38,6 +39,9 @@ MIN_REQUEST_GAP_SECONDS = 1.2         # politeness between consecutive requests
 REQUEST_TIMEOUT_SECONDS = 20.0
 MAX_RETRIES = 3
 BACKOFF_BASE_SECONDS = 1.5
+MAX_BACKOFF_SECONDS = 30.0            # cap for the jittered exponential backoff
+RETRY_AFTER_MAX_SECONDS = 120.0       # never sleep longer than this on Retry-After
+RETRY_STATUS_CODES = {500, 502, 503, 504}
 
 # Returned by fetch_category when the ETag says "not modified since last poll".
 UNCHANGED = object()
@@ -121,8 +125,11 @@ def format_price(price: float, meta: FetchMeta) -> str:
 class NinjaApiClient:
     def __init__(self, timeout: float = REQUEST_TIMEOUT_SECONDS,
                  user_agent_fn: Optional[Callable[[], str]] = None,
-                 base_url_fn: Optional[Callable[[], str]] = None):
+                 base_url_fn: Optional[Callable[[], str]] = None,
+                 timeout_fn: Optional[Callable[[], float]] = None):
         self.timeout = timeout
+        # per-request override (e.g. live config value); falls back to `timeout`
+        self._timeout_fn = timeout_fn or (lambda: timeout)
         self._user_agent_fn = user_agent_fn or (lambda: "NinjaAlert/2.0 (contact: unset)")
         self._base_url_fn = base_url_fn or (lambda: BASE_URL)
         self._sess = requests.Session()
@@ -141,7 +148,7 @@ class NinjaApiClient:
         if cached and fresh and not force:
             return cached
         resp = self._request(f"{self._base_url_fn().rstrip('/')}/{game}/api/economy/leagues")
-        data = resp.json()
+        data = self._json(resp, f"{game}/leagues")
         if not isinstance(data, list):
             raise ApiError(f"unexpected league payload for {game}")
         leagues = []
@@ -173,7 +180,7 @@ class NinjaApiClient:
                              params={"league": league, "type": cat.id})
         if resp is UNCHANGED:
             return UNCHANGED, None
-        payload = resp.json()
+        payload = self._json(resp, f"{game}/{cat.id}")
         if cat.source == "exchange":
             meta, quotes = self._parse_exchange(game, league, cat, payload)
         else:
@@ -308,7 +315,10 @@ class NinjaApiClient:
     def _request(self, url: str, params: Optional[Dict[str, str]] = None):
         """GET with ETag caching, retries and error mapping.
 
-        Returns a requests.Response, or the UNCHANGED sentinel on HTTP 304.
+        Retries network errors and 5xx with jittered exponential backoff;
+        429/503 additionally honour the Retry-After header. 404 and other 4xx
+        fail immediately. Returns a requests.Response, or the UNCHANGED
+        sentinel on HTTP 304.
         """
         cache_key = url + ("?" + urlencode(sorted((params or {}).items())) if params else "")
         headers: Dict[str, str] = {"Accept": "application/json",
@@ -321,21 +331,34 @@ class NinjaApiClient:
         for attempt in range(MAX_RETRIES):
             self._throttle()
             try:
-                resp = self._sess.get(url, params=params, headers=headers, timeout=self.timeout)
+                resp = self._sess.get(url, params=params, headers=headers,
+                                      timeout=self._timeout_fn())
             except requests.RequestException as exc:
                 last_err = exc
                 log.warning("request failed (attempt %d/%d): %s %s -> %s",
                             attempt + 1, MAX_RETRIES, url, params or {}, exc)
-                time.sleep(BACKOFF_BASE_SECONDS * (2 ** attempt))
+                self._backoff(attempt)
                 continue
 
             if resp.status_code == 304:
                 log.debug("304 not modified: %s", cache_key)
                 return UNCHANGED
+            if resp.history:
+                log.info("endpoint moved: %s -> %s", url, resp.url)  # audit: log lost routes
             if resp.status_code == 404:
                 raise CategoryUnavailable(f"{cat_label(url, params)}: not available (404)")
-            if resp.status_code == 429:
-                raise RateLimited("rate limited by poe.ninja (HTTP 429)")
+            if resp.status_code == 429 or resp.status_code in RETRY_STATUS_CODES:
+                wait = self._retry_after(resp)
+                if attempt + 1 < MAX_RETRIES:
+                    log.warning("HTTP %d (attempt %d/%d)%s: %s %s", resp.status_code,
+                                attempt + 1, MAX_RETRIES,
+                                f", server asked to wait {wait:.0f}s" if wait else "",
+                                url, params or {})
+                    self._backoff(attempt, floor=wait)
+                    continue
+                if resp.status_code == 429:
+                    raise RateLimited("rate limited by poe.ninja (HTTP 429)")
+                raise ApiError(f"poe.ninja returned HTTP {resp.status_code} for {url}")
             if resp.status_code >= 400:
                 raise ApiError(f"poe.ninja returned HTTP {resp.status_code} for {url}")
 
@@ -344,6 +367,30 @@ class NinjaApiClient:
                 self._etags[cache_key] = et
             return resp
         raise ApiError(f"network error after {MAX_RETRIES} attempts: {last_err}")
+
+    def _backoff(self, attempt: int, floor: float = 0.0) -> None:
+        """Jittered exponential backoff, never below a server-requested floor."""
+        delay = min(MAX_BACKOFF_SECONDS,
+                    BACKOFF_BASE_SECONDS * (2 ** attempt) * uniform(0.5, 1.5))
+        time.sleep(max(delay, floor))
+
+    @staticmethod
+    def _retry_after(resp) -> float:
+        """Server-requested delay in seconds, clamped to sane bounds (0 = absent)."""
+        raw = resp.headers.get("Retry-After", "")
+        try:
+            return min(max(float(raw), 1.0), RETRY_AFTER_MAX_SECONDS)
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _json(resp, context: str) -> Any:
+        """Parse a JSON body, mapping malformed payloads onto ApiError so the
+        poller's except-ApiError handler covers truncated/HTML responses."""
+        try:
+            return resp.json()
+        except (ValueError, TypeError) as exc:
+            raise ApiError(f"malformed JSON from {context}: {exc}") from exc
 
     def _throttle(self) -> None:
         gap = time.time() - self._last_request_ts

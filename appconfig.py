@@ -103,6 +103,9 @@ class DetectorCfg:
     bias: float = -3.0
     suspect_at: float = 0.65
     organic_at: float = 0.35
+    # ---- weight refit (audit Phase 1; calibration.py) -----------------------
+    auto_calibrate: bool = False          # in-app periodic refit (default: off)
+    calibrate_interval_hours: float = 24.0
     # ---- storage ------------------------------------------------------------
     history_retention_days: float = 14.0
 
@@ -302,6 +305,10 @@ class Config:
         d.min_history = min(max(8, int(d.min_history)), d.window - 1)
         if len(d.weights) != 6 or not all(isinstance(w, (int, float)) for w in d.weights):
             d.weights = [1.5, 1.2, 1.5, 1.0, 0.8, 0.6]
+        # audit: clamp magnitudes so one miscalibrated feature cannot dominate
+        d.weights = [min(max(float(w), 0.0), 5.0) for w in d.weights]
+        d.bias = min(max(float(d.bias), -10.0), 5.0)
+        d.calibrate_interval_hours = min(max(float(d.calibrate_interval_hours), 6.0), 168.0)
         self.thresholds.baseline_window = min(max(self.thresholds.baseline_window, 3), 24)
         self.thresholds.cooldown_minutes = min(max(self.thresholds.cooldown_minutes, 5.0), 1440.0)
         self.thresholds.jump_pct = min(max(self.thresholds.jump_pct, 1.0), 2000.0)

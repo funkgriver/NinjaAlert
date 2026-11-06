@@ -11,6 +11,11 @@ dist/
 # runtime artifacts
 ninjaalert.log*
 alert.wav
+alerts.jsonl
+history-*.sqlite3*
+.smoke-history-*
+config.json.bak-*
+.zcode/
 
 # IDE
 .vscode/
