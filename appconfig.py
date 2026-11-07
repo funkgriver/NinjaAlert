@@ -43,6 +43,16 @@ def config_path() -> str:
     return os.path.join(app_dir(), CONFIG_FILENAME)
 
 
+def resource_path(rel: str) -> str:
+    """Absolute path for a bundled resource (PyInstaller onefile aware)."""
+    base = getattr(sys, "_MEIPASS", None)     # frozen one-file extraction dir
+    if base:
+        cand = os.path.join(base, rel)
+        if os.path.exists(cand):
+            return cand
+    return os.path.join(app_dir(), rel)
+
+
 def _default_games() -> Dict[str, "GameCfg"]:
     return {
         "poe1": GameCfg(enabled=True, poll_interval_minutes=15.0,
@@ -60,6 +70,9 @@ class GameCfg:
     league_start: str = ""                # YYYY-MM-DD; empty = auto (see leagues_seen)
     poll_interval_minutes: float = 15.0
     watch: List[str] = field(default_factory=list)
+    # sections discovered at runtime from poe.ninja's site index (survive restart);
+    # each entry: {id, source, label, slug}
+    custom_sections: List[Dict[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -153,6 +166,26 @@ class WebhookCfg:
     max_per_minute: int = 12
 
 
+VALID_METRICS = ("pct", "z_abs", "rvol", "priority")
+VALID_OPS = (">=", "<=")
+VALID_DIRECTIONS = ("any", "up", "down")
+
+
+@dataclass
+class ScenarioCfg:
+    """One user-defined automation scenario (Scenarios tab in Settings)."""
+    name: str = ""
+    game: str = "poe1"                    # poe1 | poe2
+    category: str = "*"                   # category id or "*" (any)
+    name_pattern: str = ""                # case-insensitive substring on item name
+    metric: str = "pct"                   # pct | z_abs | rvol | priority
+    op: str = ">="                        # >= | <=
+    value: float = 20.0
+    direction: str = "any"                # any | up | down
+    cooldown_minutes: float = 60.0        # per (scenario, item key)
+    enabled: bool = True
+
+
 @dataclass
 class Config:
     network: NetworkCfg = field(default_factory=NetworkCfg)
@@ -162,6 +195,7 @@ class Config:
     alerts: Alerts = field(default_factory=Alerts)
     overlay: Overlay = field(default_factory=Overlay)
     webhook: WebhookCfg = field(default_factory=WebhookCfg)
+    scenarios: List[ScenarioCfg] = field(default_factory=list)
     # league -> date this install first saw it (drives auto league_start)
     leagues_seen: Dict[str, Dict[str, str]] = field(default_factory=dict)
 
@@ -171,6 +205,34 @@ class Config:
     # ---------------------------------------------------------------- utils
     def game_cfg(self, game: str) -> GameCfg:
         return self.games.setdefault(game, GameCfg())
+
+    def register_custom_section(self, game: str, cat_id: str, source: str,
+                                label: str, slug: str = "") -> bool:
+        """Persist a runtime-discovered poe.ninja section (discovery.py).
+
+        Registers the id into the in-memory category registry via _sanitize
+        and auto-enables it in the watch list. Returns False when the section
+        is already known (built-in or previously registered).
+        """
+        from categories import CATEGORIES
+        if cat_id in CATEGORIES.get(game, {}):
+            return False
+        gc = self.game_cfg(game)
+        if any(s.get("id") == cat_id for s in gc.custom_sections):
+            return False
+        gc.custom_sections.append({"id": cat_id, "source": source,
+                                   "label": label or cat_id, "slug": slug or ""})
+        if cat_id not in gc.watch:
+            gc.watch.append(cat_id)
+        self._sanitize()
+        return True
+
+    def unregister_custom_section(self, game: str, cat_id: str) -> None:
+        """Drop a custom section from the watch list (registry entry stays for
+        the session so poller state never dangles)."""
+        gc = self.game_cfg(game)
+        gc.watch = [c for c in gc.watch if c != cat_id]
+        gc.custom_sections = [s for s in gc.custom_sections if s.get("id") != cat_id]
 
     def watched(self, game: Optional[str] = None) -> List[str]:
         g = game or "poe1"
@@ -252,9 +314,22 @@ class Config:
                 if g not in VALID_GAMES or not isinstance(raw, dict):
                     continue
                 gc = self.game_cfg(g)
-                _apply_fields(gc, raw, special={"watch": gc.watch})
+                _apply_fields(gc, raw, special={"watch": gc.watch,
+                                                "custom_sections": gc.custom_sections})
         else:
             self._migrate_legacy(data)
+
+        scen = data.get("scenarios")
+        if isinstance(scen, list):
+            parsed: List[ScenarioCfg] = []
+            for raw in scen:
+                if isinstance(raw, ScenarioCfg):
+                    parsed.append(raw)
+                elif isinstance(raw, dict):
+                    sc = ScenarioCfg()
+                    _apply_fields(sc, raw)
+                    parsed.append(sc)
+            self.scenarios = parsed
 
         seen = data.get("leagues_seen")
         if isinstance(seen, dict):
@@ -284,10 +359,28 @@ class Config:
         log.info("migrated legacy config for game=%s", game)
 
     def _sanitize(self) -> None:
+        from categories import CATEGORIES as _CATS
         for g in VALID_GAMES:
             gc = self.game_cfg(g)
-            valid = CATEGORIES[g]
-            gc.watch = [c for c in gc.watch if c in valid] or list(DEFAULT_WATCH[g])
+            valid = _CATS[g]
+            # runtime-discovered sections join the registry (idempotent) so
+            # watch entries can reference them like built-in categories
+            known = dict(valid)
+            for sec in gc.custom_sections:
+                if (isinstance(sec, dict) and isinstance(sec.get("id"), str) and sec["id"]
+                        and sec.get("source") in ("exchange", "item")):
+                    if sec["id"] not in known:
+                        from categories import CatDef
+                        valid[sec["id"]] = CatDef(sec["id"], sec["source"],
+                                                  str(sec.get("label") or sec["id"]),
+                                                  sec.get("slug") or None)
+                        known[sec["id"]] = valid[sec["id"]]
+            gc.watch = [c for c in gc.watch if c in known] or list(DEFAULT_WATCH[g])
+            gc.custom_sections = [
+                {"id": s["id"], "source": s["source"],
+                 "label": str(s.get("label") or s["id"]), "slug": str(s.get("slug") or "")}
+                for s in gc.custom_sections
+                if isinstance(s, dict) and s.get("id") in known]
             gc.poll_interval_minutes = min(max(gc.poll_interval_minutes, 5.0), 240.0)
             if gc.league is not None and not str(gc.league).strip():
                 gc.league = None
@@ -325,6 +418,40 @@ class Config:
             self.overlay.corner = "bottom-right"
         if self.webhook.format not in VALID_WEBHOOK_FORMATS:
             self.webhook.format = "generic"
+        if (self.webhook.enabled and self.webhook.format == "telegram"
+                and (not self.webhook.url.strip() or not self.webhook.chat_id.strip())):
+            log.warning("webhook: telegram format needs both the bot API URL/token "
+                        "and a chat id - notifications stay off until configured")
+        seen_names: set = set()
+        kept: List[ScenarioCfg] = []
+        for raw in list(self.scenarios):
+            if isinstance(raw, ScenarioCfg):
+                sc = raw
+            elif isinstance(raw, dict):          # tolerant: dicts coerced in-memory too
+                sc = ScenarioCfg()
+                _apply_fields(sc, raw)
+            else:
+                continue
+            sc.name = str(sc.name).strip() or "scenario"
+            base, n = sc.name, 2
+            while sc.name in seen_names:           # names key UI rows and cooldowns
+                sc.name = f"{base} #{n}"
+                n += 1
+            seen_names.add(sc.name)
+            if sc.game not in VALID_GAMES:
+                sc.game = "poe1"
+            if sc.category != "*" and sc.category not in _CATS[sc.game]:
+                sc.category = "*"
+            if sc.metric not in VALID_METRICS:
+                sc.metric = "pct"
+            if sc.op not in VALID_OPS:
+                sc.op = ">="
+            if sc.direction not in VALID_DIRECTIONS:
+                sc.direction = "any"
+            sc.value = float(sc.value)
+            sc.cooldown_minutes = min(max(float(sc.cooldown_minutes), 5.0), 10080.0)
+            kept.append(sc)
+        self.scenarios = kept
         self.network.timeout_s = min(max(self.network.timeout_s, 3.0), 120.0)
         if self.network.base_url and not str(self.network.base_url).startswith(("http://", "https://")):
             self.network.base_url = "https://poe.ninja"
@@ -343,6 +470,11 @@ def _apply_fields(dc: Any, data: Optional[Dict[str, Any]],
             target = special[key]
             if isinstance(value, dict):
                 target.update({k: v for k, v in value.items()})
+            elif isinstance(value, list) and isinstance(target, list):
+                if value and isinstance(value[0], dict):
+                    target[:] = [v for v in value if isinstance(v, dict)]
+                else:
+                    target[:] = [str(v) for v in value]
             continue
         if key not in known:
             log.debug("unknown config key %s.%s ignored", type(dc).__name__, key)

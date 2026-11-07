@@ -52,6 +52,10 @@ class WebhookSender:
         cfg = self._cfg_fn()
         if not cfg.webhook.enabled or not cfg.webhook.url:
             return
+        if (cfg.webhook.format == "telegram"
+                and not str(cfg.webhook.chat_id).strip()):
+            log.debug("telegram webhook configured without chat id - skipping")  # graceful
+            return
         if float(payload.get("priority", 0.0)) < float(cfg.webhook.min_priority):
             return
         try:
@@ -107,17 +111,26 @@ class WebhookSender:
                    "User-Agent": cfg.user_agent}
         timeout = min(max(cfg.network.timeout_s, 2.0), 15.0)
         if cfg.webhook.format == "telegram":
+            url = cfg.webhook.url.strip()
+            if not url.lower().startswith(("http://", "https://")):
+                # bare bot token ("123456:ABC-...") -> construct the endpoint
+                url = f"https://api.telegram.org/bot{url}/sendMessage"
             body: Dict[str, Any] = {
                 "chat_id": cfg.webhook.chat_id,
                 "text": payload.get("text") or str(payload),
                 "disable_web_page_preview": True,
             }
         else:
+            url = cfg.webhook.url
             body = payload
-        resp = requests.post(cfg.webhook.url, data=json.dumps(body),
-                             headers=headers, timeout=timeout)
+        try:
+            resp = requests.post(url, data=json.dumps(body),
+                                 headers=headers, timeout=timeout)
+        except requests.RequestException as exc:
+            log.warning("webhook POST %s failed: %s", url, exc)
+            return
         if resp.status_code >= 300:
-            log.warning("webhook POST %s -> HTTP %d", cfg.webhook.url, resp.status_code)
+            log.warning("webhook POST %s -> HTTP %d", url, resp.status_code)
         else:
             log.info("webhook delivered: %s", payload.get("name"))
 

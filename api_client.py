@@ -165,6 +165,15 @@ class NinjaApiClient:
     def current_league(self, game: str) -> str:
         return self.get_leagues(game)[0].id
 
+    def get_economy_index(self, game: str) -> str:
+        """HTML of the site's economy index (section discovery; ETag-cached,
+        fetched at most once per discovery interval by the poller)."""
+        url = f"{self._base_url_fn().rstrip('/')}/poe{game[-1]}/economy"
+        resp = self._request(url)
+        if resp is UNCHANGED:
+            return ""
+        return resp.text
+
     # ------------------------------------------------------------- quotes
     def fetch_category(
         self, game: str, league: str, cat_id: str

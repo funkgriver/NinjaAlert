@@ -33,7 +33,8 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from analyzer import Alert
 from analysis_worker import AnalysisWorker
 from api_client import NinjaApiClient
-from appconfig import Config, app_dir, config_path
+from appconfig import Config, app_dir, config_path, resource_path
+from dataclasses import replace as dc_replace
 from poller import PollWorker
 from ui_overlay import ToastManager
 from ui_settings import SettingsWindow
@@ -65,29 +66,61 @@ def setup_logging(debug: bool = False) -> None:
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
-def render_tray_icon(state: str = "ok") -> QIcon:
-    """Programmatically drawn tray icon: dark rounded square + rising price line."""
-    size = 64
+def load_app_icon() -> QIcon:
+    """Custom bundled icon (assets/app.ico); drawn fallback when missing."""
+    path = resource_path("assets/app.ico")
+    if os.path.exists(path):
+        return QIcon(path)
+    return render_tray_icon("ok")
+
+
+def _drawn_icon_pixmap(size: int = 64) -> QPixmap:
+    """Legacy programmatic icon (fallback when the .ico asset is absent)."""
     pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
     p = QPainter(pix)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    s = size / 64.0
     p.setBrush(QColor("#12151d"))
     pen = QPen(QColor("#3a4354"))
-    pen.setWidthF(2.0)
+    pen.setWidthF(2.0 * s)
     p.setPen(pen)
-    p.drawRoundedRect(2, 2, size - 4, size - 4, 14, 14)
-    color = QColor(TRAY_COLORS.get(state, TRAY_COLORS["ok"]))
+    p.drawRoundedRect(int(2 * s), int(2 * s), int(size - 4 * s), int(size - 4 * s),
+                      int(14 * s), int(14 * s))
+    color = QColor(TRAY_COLORS["ok"])
     pen = QPen(color)
-    pen.setWidthF(5.0)
+    pen.setWidthF(5.0 * s)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     p.setPen(pen)
-    points = [(12, 46), (22, 46), (28, 32), (36, 38), (50, 16)]
+    points = [(12 * s, 46 * s), (22 * s, 46 * s), (28 * s, 32 * s),
+              (36 * s, 38 * s), (50 * s, 16 * s)]
     for (x1, y1), (x2, y2) in zip(points, points[1:]):
-        p.drawLine(x1, y1, x2, y2)
-    p.drawLine(50, 16, 40, 17)
-    p.drawLine(50, 16, 49, 26)
+        p.drawLine(int(x1), int(y1), int(x2), int(y2))
+    p.drawLine(int(50 * s), int(16 * s), int(40 * s), int(17 * s))
+    p.drawLine(int(50 * s), int(16 * s), int(49 * s), int(26 * s))
+    p.end()
+    return pix
+
+
+def render_tray_icon(state: str = "ok") -> QIcon:
+    """Custom app icon with a state badge dot (bottom-left); the badge keeps
+    the tray informative while the artwork stays recognizable."""
+    icon = QIcon(resource_path("assets/app.ico")) if \
+        os.path.exists(resource_path("assets/app.ico")) else None
+    base = QPixmap(icon.pixmap(64, 64)) if icon is not None and not icon.pixmap(64, 64).isNull() \
+        else _drawn_icon_pixmap(64)
+    if base.isNull():
+        base = _drawn_icon_pixmap(64)
+    pix = QPixmap(base.size())
+    pix.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pix)
+    p.drawPixmap(0, 0, base)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setBrush(QColor(TRAY_COLORS.get(state, TRAY_COLORS["ok"])))
+    p.setPen(QPen(QColor("#12151d"), 2.0))
+    d = base.width() * 0.28
+    p.drawEllipse(int(base.width() * 0.06), int(base.height() * 0.62), int(d), int(d))
     p.end()
     return QIcon(pix)
 
@@ -197,6 +230,8 @@ class NinjaAlertController(QObject):
             worker.note.connect(self._on_note)
             worker.cycle_error.connect(self._on_cycle_error)
             worker.state_changed.connect(lambda s, g=game: self._on_state_changed(g, s))
+            worker.section_discovered.connect(self._on_section_discovered)
+            worker.section_cleared.connect(self._on_section_cleared)
             self._pollers[game] = worker
 
     # ------------------------------------------------------------------ tray
@@ -243,6 +278,8 @@ class NinjaAlertController(QObject):
     def show_settings(self) -> None:
         if self._settings is None:
             self._settings = SettingsWindow(self._cfg)
+            self._settings.setWindowIcon(load_app_icon())
+            self._settings.set_status_provider(self._status_snapshot)
             self._settings.settings_saved.connect(self._on_settings_saved)
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)
@@ -253,6 +290,23 @@ class NinjaAlertController(QObject):
         self._settings.activateWindow()
 
     _settings: Optional[SettingsWindow] = None
+
+    def _status_snapshot(self) -> dict:
+        """Thread-safe snapshot for the Status & Diagnostics tab."""
+        stats = self._worker.stats() if self._worker is not None else {}
+        snap = {
+            "engine": self._cfg.detector.engine,
+            "auto_calibrate": self._cfg.detector.auto_calibrate,
+            "scenarios": len(self._cfg.scenarios),
+            "poller_states": dict(self._poller_states),
+            "worker_stats": stats,
+            "last_detail": self._last_detail,
+            "leagues": dict(self._current_league),
+        }
+        for game in ("poe1", "poe2"):
+            worker = self._pollers.get(game)
+            snap[f"{game}:paused"] = bool(worker is not None and worker.is_paused)
+        return snap
 
     def check_now(self) -> None:
         for worker in self._pollers.values():
@@ -327,11 +381,19 @@ class NinjaAlertController(QObject):
             log.exception("snapshot hand-off failed (%s)", game)
 
     def _on_analyzed(self, result: dict) -> None:
-        """Worker -> GUI dispatch: toasts, journal, webhook."""
+        """Worker -> GUI dispatch: toasts, journal, webhook, scenario hits."""
         try:
             meta = result["meta"]
-            for a in result["shown"]:
+            shown = result["shown"]
+            for a in shown:
                 self._dispatch_alert(a, meta)
+            dispatched = {a.key for a in shown}
+            for hit in result.get("scenario_hits") or []:
+                if hit.anomaly.key in dispatched:
+                    continue    # already alerted via the governor budget
+                annotated = dc_replace(hit.anomaly,
+                                       label=f"SCENARIO·{hit.scenario}")
+                self._dispatch_alert(annotated, meta)
             if result["digest"] is not None:
                 self._toasts.show_digest(result["digest"], result["game"], meta.league)
         except Exception:
@@ -340,6 +402,53 @@ class NinjaAlertController(QObject):
     def _on_worker_note(self, text: str) -> None:
         log.info("engine: %s", text)
         self._last_detail = text
+
+    # --------------------------------------------------- section discovery
+    def _on_section_discovered(self, game: str, section: dict) -> None:
+        try:
+            cat_id = str(section.get("id") or "")
+            if not cat_id:
+                return
+            if self._cfg.register_custom_section(
+                    game, cat_id, str(section.get("source") or "item"),
+                    str(section.get("label") or cat_id),
+                    str(section.get("slug") or "")):
+                try:
+                    self._cfg.save(config_path())
+                except Exception as exc:
+                    log.warning("could not persist discovered section: %s", exc)
+                if self._worker is not None:
+                    self._worker.apply_config(self._cfg)
+                for worker in self._pollers.values():
+                    worker.apply_config(self._cfg)
+                self._tray.showMessage(
+                    "New poe.ninja section",
+                    f"{game}: '{cat_id}' discovered and now monitored.",
+                    QSystemTrayIcon.MessageIcon.Information, 4000)
+                log.info("section discovered (%s): %s", game, section)
+        except Exception:
+            log.exception("section discovery handling failed")
+
+    def _on_section_cleared(self, game: str, cat_id: str) -> None:
+        try:
+            gc = self._cfg.game_cfg(game)
+            if cat_id not in gc.watch:
+                return
+            gc.watch = [c for c in gc.watch if c != cat_id]
+            try:
+                self._cfg.save(config_path())
+            except Exception as exc:
+                log.warning("could not persist section removal: %s", exc)
+            if self._worker is not None:
+                self._worker.apply_config(self._cfg)
+            for worker in self._pollers.values():
+                worker.apply_config(self._cfg)
+            self._tray.showMessage(
+                "Section removed",
+                f"{game}: '{cat_id}' is no longer on poe.ninja — auto-cleared.",
+                QSystemTrayIcon.MessageIcon.Information, 4000)
+        except Exception:
+            log.exception("section clear handling failed")
 
     def _dispatch_alert(self, a, meta) -> None:
         parts = a.key.split(":")
@@ -449,6 +558,7 @@ def main(argv) -> int:
 
     app = QApplication(argv)
     app.setApplicationName("NinjaAlert")
+    app.setWindowIcon(load_app_icon())
     app.setQuitOnLastWindowClosed(False)  # tray app: window close != quit
 
     sys.excepthook = lambda t, v, tb: log.critical("unhandled exception", exc_info=(t, v, tb))

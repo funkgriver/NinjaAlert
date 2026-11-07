@@ -39,6 +39,23 @@ Config lives next to the exe (`config.json`, created on first run; v1 configs mi
 4. **Detection engine** — leave on **Auto**.
 5. Save & Apply. First alerts appear once baselines exist (see below).
 
+## Settings tabs (v2.1)
+
+- **Monitoring** — everything from the base setup: games, league, watched categories,
+  thresholds, alerts and webhook automation.
+- **Scenarios** — your own alert rules: match game/category/name substring, trigger on
+  price-change %, |z-score|, relative volume or priority (≥/≤), optional direction filter,
+  per-item cooldown. Scenario alerts bypass the alert budget and are tagged
+  `SCENARIO·<name>` in popups, `alerts.jsonl` and webhooks.
+- **Status** — live snapshot (poller state, leagues, robust/basic items tracked, last event)
+  plus one-click **automated checks** (weights, SQLite WAL + index, journal, icon asset,
+  log tail) and a live **poe.ninja probe**.
+- **Auto sections** — once a day the app parses poe.ninja's economy index: brand-new
+  categories are probed against the API, registered and auto-watched; watched sections that
+  keep answering 404 are auto-cleared (with a tray notification).
+- **Telegram shortcut** — pasting just the bot token (`123456:ABC-…`) instead of the full
+  `sendMessage` URL works too; a missing chat id is skipped gracefully with a warning.
+
 ## Auto alerts
 
 - **Engine `auto` (default)** — league-phase model scales the alert threshold with the

@@ -35,6 +35,7 @@ from analyzer import AnomalyDetector
 from appconfig import app_dir
 from calibration import calibrate_from_ticks
 from models import Snapshot
+from scenarios import ScenarioEngine
 
 log = logging.getLogger("ninjaalert.worker")
 
@@ -55,6 +56,7 @@ class AnalysisWorker(QThread):
         self._stats: Dict[str, Tuple[int, int]] = {}   # game -> (robust, basic)
         self._last_calibrate = time.time()
         self._last_pipeline_try = 0.0
+        self._scenarios = ScenarioEngine()
 
     # --------------------------------------------------- control (GUI thread)
     def submit_snapshot(self, game: str, quotes, meta) -> None:
@@ -135,8 +137,10 @@ class AnalysisWorker(QThread):
 
         engine = cfg.detector.engine
         basic_alerts = basics[game].feed(quotes, meta, now)
+        full_anomalies: List = []
         if engine == "basic" or pipeline is None:
             anomalies = [anomaly_from_basic(a, meta.league) for a in basic_alerts]
+            full_anomalies.extend(anomalies)
             if pipeline is not None:
                 pipeline.ingest(ticks)          # storage + prune, no robust analysis
                 shown, digest = pipeline.governor.decide(anomalies)
@@ -145,10 +149,12 @@ class AnalysisWorker(QThread):
         else:  # auto: robust engine + basic warmup fallback
             extra = [anomaly_from_basic(a, meta.league)
                      for a in basic_alerts if a.key not in pipeline.analyzer.ready_keys]
-            shown, digest = pipeline.handle(snap, extra_anomalies=extra)
+            shown, digest = pipeline.handle(snap, extra_anomalies=extra,
+                                            collect_anomalies=full_anomalies)
 
-        self.analyzed.emit({"game": game, "meta": meta,
-                            "shown": shown, "digest": digest})
+        scenario_hits = self._scenarios.evaluate(cfg.scenarios, full_anomalies, now)
+        self.analyzed.emit({"game": game, "meta": meta, "shown": shown,
+                            "digest": digest, "scenario_hits": scenario_hits})
 
     def _handle_config(self, pipelines, basics, cfg) -> None:
         prev_engine = self._cfg.detector.engine
@@ -170,6 +176,7 @@ class AnalysisWorker(QThread):
             pipeline.analyzer.reset()
             pipeline.governor.reset()
         basics[game].reset()
+        self._scenarios.reset()
         log.info("engines reset (%s)", game)
 
     def _ensure_pipeline(self, pipelines, game: str) -> Optional[AnalysisPipeline]:

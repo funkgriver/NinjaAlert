@@ -456,7 +456,8 @@ class AnalysisPipeline:
             self._last_prune = time.time()
 
     def handle(self, snap: Snapshot,
-               extra_anomalies: Optional[List[Anomaly]] = None
+               extra_anomalies: Optional[List[Anomaly]] = None,
+               collect_anomalies: Optional[List[Anomaly]] = None
                ) -> Tuple[List[Anomaly], Optional[Digest]]:
         self.store.append(snap.ticks)
         self._maybe_prune()
@@ -464,6 +465,9 @@ class AnalysisPipeline:
         if extra_anomalies:
             anomalies = list(anomalies) + list(extra_anomalies)
             anomalies.sort(key=lambda a: a.priority, reverse=True)
+        if collect_anomalies is not None:
+            # full pre-governor list (scenario engine evaluates everything)
+            collect_anomalies.extend(anomalies)
         return self.governor.decide(anomalies)
 
     def close(self) -> None:

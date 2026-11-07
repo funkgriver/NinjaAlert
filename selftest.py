@@ -576,6 +576,144 @@ def test_hardening() -> None:
         check("hardening: suite ran", False, traceback.format_exc(limit=4))
 
 
+# --------------------------------------------------- new-features (v2.1)
+def test_features() -> None:
+    print("== scenarios / discovery / diagnostics / telegram ==")
+    try:
+        import tempfile
+        from pathlib import Path
+
+        # ---- scenario engine ------------------------------------------------
+        from analyzer import Alert as BasicAlert
+        from advanced_analyzer import anomaly_from_basic
+        from appconfig import Config, ScenarioCfg
+        from scenarios import ScenarioEngine
+
+        def basic_anomaly(name="Divine Orb", price=150.0, pct=50.0,
+                          key="poe1:x:Currency:div", game="poe1"):
+            b = BasicAlert(game=game, league="L", category="Currency", name=name,
+                           old_price=100.0, new_price=price, pct=pct, list_count=None,
+                           vol_ratio=None, icon=None, details_id="x", source="exchange",
+                           key=key)
+            return anomaly_from_basic(b, "L")
+
+        eng = ScenarioEngine()
+        scs = [
+            ScenarioCfg(name="big spike", game="poe1", category="Currency",
+                        metric="pct", op=">=", value=20.0, direction="up",
+                        cooldown_minutes=60.0),
+            ScenarioCfg(name="z watch", game="poe1", category="*",
+                        metric="z_abs", op=">=", value=2.0, enabled=False),
+            ScenarioCfg(name="gem dumps", game="poe1", category="SkillGem",
+                        metric="pct", op="<=", value=-10.0, direction="down"),
+            ScenarioCfg(name="named", game="poe1", category="*",
+                        name_pattern="divine", metric="pct", op=">=", value=1.0),
+        ]
+        a_up = basic_anomaly()                                    # +50% Currency
+        a_down = basic_anomaly(name="Gem", price=5.0, pct=-20.0,
+                               key="poe1:i:SkillGem:gem")         # -20% SkillGem
+        hits = eng.evaluate(scs, [a_up, a_down])
+        names = sorted({h.scenario for h in hits})
+        check("scenarios: up-rule + name-rule fire", names == ["big spike", "named"], str(names))
+        check("scenarios: disabled rule skipped", "z watch" not in names)
+        check("scenarios: wrong category filtered",
+              not any(h.key == a_up.key and h.scenario == "gem dumps" for h in hits))
+        hits2 = eng.evaluate(scs, [a_up])
+        check("scenarios: cooldown suppresses repeat",
+              not any(h.scenario == "big spike" for h in hits2))
+        eng.reset()
+        scs.append(ScenarioCfg(name="z on", game="poe1", category="*",
+                               metric="z_abs", op=">=", value=0.5))
+        from dataclasses import replace as dc_replace
+        a_z = dc_replace(basic_anomaly(), z_adj=-3.0)
+        hits3 = eng.evaluate(scs, [a_z])
+        check("scenarios: z_abs uses absolute value",
+              any(h.scenario == "z on" and h.metric_value == 3.0 for h in hits3),
+              str([(h.scenario, h.metric_value) for h in hits3]))
+
+        # ---- discovery parsing ----------------------------------------------
+        from discovery import known_slugs, parse_site_slugs, slug_to_type, unknown_slugs
+        html = ('<a href="/poe1/economy/currency/">C</a>'
+                '<a href="https://poe.ninja/poe1/economy/unique-weapons">U</a>'
+                '<a href="/poe2/economy/currency">C2</a>'
+                '<a href="/poe1/economy/leagues">skip</a>'
+                '<a href="/poe1/economy/brand-new-thing">N</a>')
+        slugs = parse_site_slugs(html, "poe1")
+        check("discovery: poe1 slugs parsed, poe2/skip excluded",
+              slugs == ["currency", "unique-weapons", "brand-new-thing"], str(slugs))
+        check("discovery: slug_to_type camelcase",
+              slug_to_type("unique-relics") == "UniqueRelics"
+              and slug_to_type("brand-new-thing") == "BrandNewThing")
+        known = known_slugs("poe1")
+        check("discovery: plural guess maps tattoos",
+              known.get("tattoos") == "Tattoo" and known.get("currency") == "Currency")
+        check("discovery: unknown candidates",
+              unknown_slugs("poe1", slugs) == ["brand-new-thing"])
+
+        # ---- diagnostics ------------------------------------------------------
+        from diagnostics import run_checks
+        cfgd = Config()
+        cfgd.scenarios = [ScenarioCfg(name="s", enabled=True)]
+        with tempfile.TemporaryDirectory() as td:
+            results = run_checks(cfgd, td)
+            by_name = {r.name: r for r in results}
+            check("diag: weights ok", by_name["Detector weights"].ok)
+            check("diag: fresh db handled", by_name["poe1: history DB"].ok
+                  and "no history yet" in by_name["poe1: history DB"].detail)
+            check("diag: journal writable", by_name["Alert journal"].ok)
+            check("diag: icon asset present", by_name["App icon asset"].ok,
+                  by_name["App icon asset"].detail)
+            check("diag: log tail ok", by_name["Log tail"].ok)
+        cfgd.webhook.enabled = True
+        cfgd.webhook.format = "telegram"
+        cfgd.webhook.url = ""
+        bad = [r for r in run_checks(cfgd, td) if r.name == "Webhook / Telegram"]
+        check("diag: telegram without chat id flagged", bad and not bad[0].ok)
+        cfgd.webhook.url = "123456:ABC-token"
+        cfgd.webhook.chat_id = "42"
+        good = [r for r in run_checks(cfgd, td) if r.name == "Webhook / Telegram"]
+        check("diag: telegram token accepted", good and good[0].ok, good[0].detail)
+
+        # ---- telegram payload (stubbed transport) ------------------------------
+        import webhook as wh
+        cfgt = Config()
+        cfgt.webhook.enabled = True
+        cfgt.webhook.format = "telegram"
+        cfgt.webhook.url = "123456:ABC-token"
+        cfgt.webhook.chat_id = "42"
+        sender = wh.WebhookSender(lambda: cfgt)
+        captured: list = []
+        real_post = wh.requests.post
+        wh.requests.post = lambda url, **kw: captured.append((url, kw)) or type(
+            "R", (), {"status_code": 200})()
+        try:
+            sender._send({"text": "hello", "name": "X", "priority": 1.0})
+        finally:
+            wh.requests.post = real_post
+            sender.stop()
+        check("telegram: bare token -> sendMessage URL",
+              captured and captured[0][0] ==
+              "https://api.telegram.org/bot123456:ABC-token/sendMessage", str(captured))
+        check("telegram: body carries chat_id + text",
+              captured and captured[0][1]["data"] and
+              '"chat_id": "42"' in captured[0][1]["data"].replace("'", '"'))
+        cfgt2 = Config()
+        cfgt2.webhook.enabled = True
+        cfgt2.webhook.format = "telegram"
+        cfgt2.webhook.url = "https://t/x"
+        cfgt2.webhook.chat_id = ""
+        sender2 = wh.WebhookSender(lambda: cfgt2)
+        try:
+            sender2.notify({"text": "x", "priority": 1.0})
+            check("telegram: empty chat id skipped gracefully",
+                  sender2._queue.qsize() == 0)
+        finally:
+            sender2.stop()
+    except Exception:
+        import traceback
+        check("features: suite ran", False, traceback.format_exc(limit=4))
+
+
 # ----------------------------------------------------------------------- qt
 def test_qt() -> None:
     print("== qt widgets (offscreen) ==")
@@ -620,6 +758,24 @@ def test_qt() -> None:
         settings.close()  # must hide (close-to-tray), not quit the app
         check("qt: close-to-tray keeps window alive", settings.isHidden())
 
+        # tabs + scenarios draft + live status provider
+        check("qt: three tabs present", settings._tabs.count() == 3,
+              str(settings._tabs.count()))
+        from appconfig import ScenarioCfg
+        settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
+                                                metric="pct", value=5.0))
+        settings._reload_scenarios()
+        check("qt: scenario draft listed", settings._scen_list.count() == 1)
+        settings.set_status_provider(lambda: {
+            "engine": "auto", "auto_calibrate": False, "scenarios": 1,
+            "poller_states": {"poe1": "waiting"}, "worker_stats": {"poe1": (7, 21)},
+            "last_detail": "ok", "leagues": {"poe1": "Allflame"}})
+        settings.show()
+        settings._refresh_status()
+        check("qt: status tab renders provider snapshot",
+              "7 robust + 21 basic" in settings._live_labels["poe1"].text(),
+              settings._live_labels["poe1"].text())
+        settings.hide()
         QTimer.singleShot(400, app.quit)
         app.exec()
     except Exception as exc:
@@ -639,9 +795,12 @@ def test_worker() -> None:
         import analysis_worker as aw
         from analysis_worker import AnalysisWorker
         from api_client import FetchMeta, ItemQuote
-        from appconfig import Config
+        from appconfig import Config, ScenarioCfg
 
         cfg = Config()
+        cfg.scenarios = [ScenarioCfg(name="any spike", game="poe1", category="*",
+                                     metric="pct", op=">=", value=1.0,
+                                     cooldown_minutes=60.0)]
         tmp = tempfile.TemporaryDirectory()
         real_app_dir = aw.app_dir
         aw.app_dir = lambda: tmp.name          # isolate history DBs from the app's
@@ -671,6 +830,29 @@ def test_worker() -> None:
                       and isinstance(r["shown"], list))
             stats = worker.stats()
             check("worker: stats populated", stats.get("poe1", (0, 0))[1] >= 1, str(stats))
+
+            # scenario hook: the basic engine needs 3 prior points before a
+            # jump can alert; the 4th snapshot (100->150) then produces an
+            # anomaly that the pct>=1 scenario must catch
+            prices = (100.0, 102.0, 104.0, 150.0)
+            for i in range(1, 4):
+                quotes_i = [ItemQuote(key=f"poe1:x:Currency:div{j}", name=f"Divine {j}",
+                                      game="poe1", category="Currency",
+                                      source="exchange", price=prices[i],
+                                      list_count=None, icon=None, details_id="divine",
+                                      volume=42.0, aux=0.9) for j in range(5)]
+                time.sleep(1.1)                # distinct tick timestamps
+                worker.submit_snapshot("poe1", quotes_i, meta)
+                deadline = time.time() + 10
+                while time.time() < deadline and len(results) <= i:
+                    app.processEvents()
+                    time.sleep(0.05)
+            check("worker: 4 snapshots analyzed", len(results) == 4, str(len(results)))
+            hits = results[-1].get("scenario_hits") if results else []
+            check("worker: scenario hit emitted", bool(hits), str(len(hits)))
+            if hits:
+                check("worker: scenario hit carries anomaly + name",
+                      hits[0].scenario == "any spike" and hits[0].anomaly.key)
 
             worker.apply_config(cfg)           # config command path
             worker.reset_game("poe1")          # rollover reset path
@@ -713,6 +895,7 @@ def main() -> int:
     test_parsers()
     test_advanced()
     test_hardening()
+    test_features()
     test_worker()
     test_poller()
     test_qt()

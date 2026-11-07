@@ -1,20 +1,29 @@
 """NinjaAlert - compact settings / control panel.
 
-Sections: status header, PoE 1 / PoE 2 game toggle, league selector
-(auto-detect from poe.ninja), watched categories per game, thresholds,
-alert behavior. The window closes to tray (hide), it never quits the app.
+Tabs:
+  Monitoring  - status header, PoE 1 / PoE 2 game toggle, league selector
+                (auto-detect from poe.ninja), watched categories per game,
+                thresholds, alert behavior, webhook automation
+  Scenarios   - user-defined automation rules (metric thresholds + matchers)
+  Status      - live diagnostics snapshot + on-demand automated checks
+
+The window closes to tray (hide), it never quits the app.
 """
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+import threading
+from dataclasses import replace as dc_replace
+from typing import Callable, Dict, List, Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -25,13 +34,16 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from api_client import BASE_URL
-from appconfig import Config
-from categories import CATEGORIES
+from appconfig import Config, ScenarioCfg, VALID_DIRECTIONS, VALID_METRICS, VALID_OPS, \
+    app_dir
+from categories import CATEGORIES, labels_for
+from diagnostics import format_result, run_checks
 
 log = logging.getLogger("ninjaalert.settings")
 
@@ -98,11 +110,116 @@ def _status_dot_pixmap(color: str, d: int = 10) -> QPixmap:
     return pix
 
 
+class ScenarioDialog(QDialog):
+    """Add / edit one automation scenario."""
+
+    def __init__(self, parent: QWidget, scen: Optional[ScenarioCfg] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Edit scenario" if scen else "New scenario")
+        self.setMinimumWidth(420)
+        s = scen or ScenarioCfg()
+
+        form = QFormLayout(self)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self._name = QLineEdit(str(s.name))
+        form.addRow("Name", self._name)
+
+        self._game = QComboBox()
+        self._game.addItem("Path of Exile 1", "poe1")
+        self._game.addItem("Path of Exile 2", "poe2")
+        idx = self._game.findData(s.game)
+        self._game.setCurrentIndex(max(idx, 0))
+        form.addRow("Game", self._game)
+
+        self._category = QComboBox()
+        self._fill_categories(str(s.category))
+        self._game.currentIndexChanged.connect(
+            lambda _: self._fill_categories(self._category.currentData()))
+        form.addRow("Category", self._category)
+
+        self._pattern = QLineEdit(str(s.name_pattern))
+        self._pattern.setPlaceholderText("optional: match part of the item name")
+        form.addRow("Name contains", self._pattern)
+
+        self._metric = QComboBox()
+        for m in VALID_METRICS:
+            self._metric.addItem({"pct": "Price change %", "z_abs": "|z-score|",
+                                  "rvol": "Relative volume", "priority": "Priority"}[m], m)
+        idx = self._metric.findData(s.metric)
+        self._metric.setCurrentIndex(max(idx, 0))
+        form.addRow("Metric", self._metric)
+
+        self._op = QComboBox()
+        for o in VALID_OPS:
+            self._op.addItem(o, o)
+        idx = self._op.findData(s.op)
+        self._op.setCurrentIndex(max(idx, 0))
+        form.addRow("Comparison", self._op)
+
+        self._value = QDoubleSpinBox()
+        self._value.setRange(-1_000_000.0, 1_000_000.0)
+        self._value.setDecimals(3)
+        self._value.setValue(float(s.value))
+        form.addRow("Threshold", self._value)
+
+        self._direction = QComboBox()
+        for d in VALID_DIRECTIONS:
+            self._direction.addItem({"any": "Any direction", "up": "Price up",
+                                     "down": "Price down"}[d], d)
+        idx = self._direction.findData(s.direction)
+        self._direction.setCurrentIndex(max(idx, 0))
+        form.addRow("Direction", self._direction)
+
+        self._cooldown = QSpinBox()
+        self._cooldown.setRange(5, 10080)
+        self._cooldown.setSuffix(" min")
+        self._cooldown.setValue(int(s.cooldown_minutes))
+        form.addRow("Cooldown (per item)", self._cooldown)
+
+        self._enabled = QCheckBox("Scenario enabled")
+        self._enabled.setChecked(bool(s.enabled))
+        form.addRow(self._enabled)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def _fill_categories(self, selected: Optional[str]) -> None:
+        game = self._game.currentData()
+        self._category.blockSignals(True)
+        self._category.clear()
+        self._category.addItem("Any category", "*")
+        for cid, label in labels_for(game).items():
+            self._category.addItem(label, cid)
+        if selected:
+            idx = self._category.findData(selected)
+            self._category.setCurrentIndex(max(idx, 0))
+        self._category.blockSignals(False)
+
+    def values(self) -> ScenarioCfg:
+        return ScenarioCfg(
+            name=self._name.text().strip() or "scenario",
+            game=str(self._game.currentData()),
+            category=str(self._category.currentData() or "*"),
+            name_pattern=self._pattern.text().strip(),
+            metric=str(self._metric.currentData()),
+            op=str(self._op.currentData()),
+            value=float(self._value.value()),
+            direction=str(self._direction.currentData()),
+            cooldown_minutes=float(self._cooldown.value()),
+            enabled=self._enabled.isChecked(),
+        )
+
+
 class SettingsWindow(QWidget):
     settings_saved = pyqtSignal(object)       # new Config
     check_now_requested = pyqtSignal()
     pause_toggled = pyqtSignal(bool)
     refresh_leagues_requested = pyqtSignal(str)
+    checks_ready = pyqtSignal(list)           # [CheckResult]
 
     def __init__(self, config: Config, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -112,9 +229,11 @@ class SettingsWindow(QWidget):
         self._checks: Dict[str, Dict[str, bool]] = {"poe1": {}, "poe2": {}}
         self._state = "starting"
         self._paused = False
+        self._status_provider: Optional[Callable[[], dict]] = None
+        self._scen_draft: List[ScenarioCfg] = [dc_replace(s) for s in config.scenarios]
 
         self.setWindowTitle("NinjaAlert — poe.ninja spike monitor")
-        self.setMinimumWidth(470)
+        self.setMinimumWidth(560)
         self.setStyleSheet(DARK_QSS)
 
         root = QVBoxLayout(self)
@@ -133,6 +252,13 @@ class SettingsWindow(QWidget):
         header.addWidget(self._status_dot)
         header.addWidget(self._status_text)
         root.addLayout(header)
+
+        # ---- tabs ----------------------------------------------------------
+        self._tabs = QTabWidget()
+        page_mon = QWidget()
+        form_mon = QVBoxLayout(page_mon)
+        form_mon.setContentsMargins(2, 2, 2, 2)
+        form_mon.setSpacing(10)
 
         # ---- game + league -----------------------------------------------
         box_game = QGroupBox("Game & League")
@@ -194,7 +320,7 @@ class SettingsWindow(QWidget):
         contact_row.addWidget(contact_lbl)
         contact_row.addWidget(self._contact_edit, stretch=1)
         form_game.addLayout(contact_row)
-        root.addWidget(box_game)
+        form_mon.addWidget(box_game)
 
         self._btn_poe1.toggled.connect(lambda on: on and self._on_game_switch("poe1"))
         self._btn_poe2.toggled.connect(lambda on: on and self._on_game_switch("poe2"))
@@ -207,7 +333,7 @@ class SettingsWindow(QWidget):
         self._cat_list.setMinimumHeight(150)
         self._cat_list.itemChanged.connect(self._on_item_changed)
         v.addWidget(self._cat_list)
-        root.addWidget(box_watch, stretch=1)
+        form_mon.addWidget(box_watch, stretch=1)
 
         # ---- detection -----------------------------------------------------
         box_detect = QGroupBox("Anomaly detection")
@@ -259,7 +385,7 @@ class SettingsWindow(QWidget):
         self._window_spin.setRange(3, 24)
         self._window_spin.setToolTip("Snapshots used to build the price baseline (median)")
         form.addRow("Baseline window", self._window_spin)
-        root.addWidget(box_detect)
+        form_mon.addWidget(box_detect)
 
         # ---- alerts ---------------------------------------------------------
         box_alerts = QGroupBox("Alerts")
@@ -273,7 +399,7 @@ class SettingsWindow(QWidget):
         self._max_popups_spin = QSpinBox()
         self._max_popups_spin.setRange(1, 12)
         form_a.addRow("Max popups", self._max_popups_spin)
-        root.addWidget(box_alerts)
+        form_mon.addWidget(box_alerts)
 
         # ---- webhook automation ------------------------------------------------
         box_hook = QGroupBox("Webhook automation (Telegram / any JSON endpoint)")
@@ -296,7 +422,7 @@ class SettingsWindow(QWidget):
         self._webhook_minprio.setSingleStep(0.5)
         self._webhook_minprio.setToolTip("Only forward anomalies with priority ≥ this value")
         form_w.addRow("Min priority", self._webhook_minprio)
-        root.addWidget(box_hook)
+        form_mon.addWidget(box_hook)
 
         # ---- buttons ---------------------------------------------------------
         btn_row = QHBoxLayout()
@@ -311,7 +437,7 @@ class SettingsWindow(QWidget):
         self._pause_btn.setCheckable(True)
         self._pause_btn.toggled.connect(self.pause_toggled.emit)
         btn_row.addWidget(self._pause_btn)
-        root.addLayout(btn_row)
+        form_mon.addLayout(btn_row)
 
         link = QLabel(
             f'<a href="{BASE_URL}" style="color:#5aa9e6;">poe.ninja</a>'
@@ -319,7 +445,18 @@ class SettingsWindow(QWidget):
         )
         link.setOpenExternalLinks(True)
         link.setStyleSheet("color: #6b7280;")
-        root.addWidget(link)
+        form_mon.addWidget(link)
+        form_mon.addStretch(1)
+
+        self._tabs.addTab(page_mon, "Monitoring")
+        self._tabs.addTab(self._build_scenarios_tab(), "Scenarios")
+        self._tabs.addTab(self._build_status_tab(), "Status")
+        root.addWidget(self._tabs, stretch=1)
+
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(3000)
+        self._status_timer.timeout.connect(self._refresh_status)
+        self.checks_ready.connect(self._on_checks_ready)
 
         self._load_from_config()
         self._set_game_toggle(self._editing_game)
@@ -354,6 +491,192 @@ class SettingsWindow(QWidget):
         """Transient note (e.g. 'Fetching Currency…') that restores state text."""
         self._status_text.setText(text)
 
+    # ------------------------------------------------------------ scenarios
+    def _build_scenarios_tab(self) -> QWidget:
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.setContentsMargins(2, 2, 2, 2)
+        hint = QLabel("Custom alert rules evaluated on every anomaly, independent of the "
+                      "alert budget. Matched alerts show a SCENARIO·<name> badge and go "
+                      "through the journal/webhook like normal alerts.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #6b7280;")
+        v.addWidget(hint)
+
+        self._scen_list = QListWidget()
+        self._scen_list.setMinimumHeight(180)
+        self._scen_list.itemChanged.connect(self._on_scenario_toggled)
+        v.addWidget(self._scen_list, stretch=1)
+
+        row = QHBoxLayout()
+        btn_add = QPushButton("Add…")
+        btn_add.clicked.connect(self._scenario_add)
+        btn_edit = QPushButton("Edit…")
+        btn_edit.clicked.connect(self._scenario_edit)
+        btn_del = QPushButton("Remove")
+        btn_del.clicked.connect(self._scenario_remove)
+        for b in (btn_add, btn_edit, btn_del):
+            row.addWidget(b)
+        row.addStretch(1)
+        v.addLayout(row)
+        note = QLabel("Changes apply with Save & Apply.")
+        note.setStyleSheet("color: #6b7280;")
+        v.addWidget(note)
+        return page
+
+    @staticmethod
+    def _scenario_summary(sc: ScenarioCfg) -> str:
+        cat = "any" if sc.category == "*" else sc.category
+        pat = f" · name~'{sc.name_pattern}'" if sc.name_pattern else ""
+        direction = {"any": "", "up": " · up", "down": " · down"}[sc.direction]
+        return (f"{sc.name} — {sc.game}/{cat}: {sc.metric} {sc.op} "
+                f"{sc.value:g}{direction}{pat} · cooldown {sc.cooldown_minutes:.0f}m")
+
+    def _reload_scenarios(self) -> None:
+        self._scen_list.blockSignals(True)
+        self._scen_list.clear()
+        for sc in self._scen_draft:
+            item = QListWidgetItem(self._scenario_summary(sc))
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if sc.enabled
+                               else Qt.CheckState.Unchecked)
+            if not sc.enabled:
+                item.setForeground(QColor("#6b7280"))
+            self._scen_list.addItem(item)
+        self._scen_list.blockSignals(False)
+
+    def _on_scenario_toggled(self, item: QListWidgetItem) -> None:
+        idx = self._scen_list.row(item)
+        if 0 <= idx < len(self._scen_draft):
+            self._scen_draft[idx].enabled = item.checkState() == Qt.CheckState.Checked
+            item.setForeground(QColor("#e6e8ee") if self._scen_draft[idx].enabled
+                               else QColor("#6b7280"))
+
+    def _scenario_add(self) -> None:
+        dlg = ScenarioDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._scen_draft.append(dlg.values())
+            self._reload_scenarios()
+
+    def _scenario_edit(self) -> None:
+        idx = self._scen_list.currentRow()
+        if not (0 <= idx < len(self._scen_draft)):
+            return
+        dlg = ScenarioDialog(self, self._scen_draft[idx])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._scen_draft[idx] = dlg.values()
+            self._reload_scenarios()
+
+    def _scenario_remove(self) -> None:
+        idx = self._scen_list.currentRow()
+        if 0 <= idx < len(self._scen_draft):
+            del self._scen_draft[idx]
+            self._reload_scenarios()
+
+    # --------------------------------------------------------- status tab
+    def _build_status_tab(self) -> QWidget:
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.setContentsMargins(2, 2, 2, 2)
+        v.setSpacing(8)
+
+        live = QGroupBox("Live status (refreshes every 3 s)")
+        form = QFormLayout(live)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self._live_labels: Dict[str, QLabel] = {}
+        for key, title in (("engine", "Engine"), ("poe1", "PoE 1"), ("poe2", "PoE 2"),
+                           ("detail", "Last event")):
+            lbl = QLabel("—")
+            lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._live_labels[key] = lbl
+            form.addRow(title, lbl)
+        v.addWidget(live)
+
+        checks = QGroupBox("Automated checks")
+        cv = QVBoxLayout(checks)
+        self._checks_list = QListWidget()
+        self._checks_list.setMinimumHeight(190)
+        cv.addWidget(self._checks_list)
+        row = QHBoxLayout()
+        self._btn_checks = QPushButton("Run checks")
+        self._btn_checks.clicked.connect(lambda: self._run_checks(probe_api=False))
+        row.addWidget(self._btn_checks)
+        self._btn_api = QPushButton("Probe poe.ninja")
+        self._btn_api.setToolTip("Live reachability check (leagues endpoint, short timeout)")
+        self._btn_api.clicked.connect(lambda: self._run_checks(probe_api=True))
+        row.addWidget(self._btn_api)
+        row.addStretch(1)
+        cv.addLayout(row)
+        v.addWidget(checks, stretch=1)
+        return page
+
+    def set_status_provider(self, fn: Optional[Callable[[], dict]]) -> None:
+        self._status_provider = fn
+
+    def _refresh_status(self) -> None:
+        if self._status_provider is None:
+            return
+        try:
+            snap = self._status_provider()
+        except Exception:
+            log.exception("status provider failed")
+            return
+        engine = self._live_labels["engine"]
+        engine.setText(
+            f"{snap.get('engine', '?')} · auto-calibration "
+            f"{'on' if snap.get('auto_calibrate') else 'off'} · "
+            f"scenarios: {snap.get('scenarios', 0)}")
+        stats = snap.get("worker_stats") or {}
+        states = snap.get("poller_states") or {}
+        leagues = snap.get("leagues") or {}
+        for game in ("poe1", "poe2"):
+            lbl = self._live_labels[game]
+            if game in stats:
+                robust, basic = stats[game]
+                lbl.setText(f"{states.get(game, '?')} · {leagues.get(game, '')} · "
+                            f"{robust} robust + {basic} basic items tracked")
+            else:
+                lbl.setText(f"{states.get(game, '?')} · worker warming up")
+        self._live_labels["detail"].setText(str(snap.get("last_detail") or "—"))
+
+    def _run_checks(self, probe_api: bool) -> None:
+        self._btn_checks.setEnabled(False)
+        self._btn_api.setEnabled(False)
+        self._checks_list.clear()
+        self._checks_list.addItem(QListWidgetItem(
+            "running checks…" if not probe_api else "probing poe.ninja…"))
+        thread = threading.Thread(target=self._checks_worker,
+                                  args=(probe_api, self._cfg), daemon=True)
+        thread.start()
+
+    def _checks_worker(self, probe_api: bool, cfg) -> None:
+        try:
+            results = run_checks(cfg, app_dir(), probe_api=probe_api)
+        except Exception as exc:               # never break the GUI thread
+            log.exception("diagnostics failed")
+            from diagnostics import CheckResult
+            results = [CheckResult("Automated checks", False, f"{type(exc).__name__}: {exc}")]
+        self.checks_ready.emit(results)
+
+    def _on_checks_ready(self, results: list) -> None:
+        self._btn_checks.setEnabled(True)
+        self._btn_api.setEnabled(True)
+        self._checks_list.clear()
+        for r in results:
+            item = QListWidgetItem(format_result(r))
+            item.setForeground(QColor("#41d98c") if r.ok else QColor("#e5534b"))
+            self._checks_list.addItem(item)
+
+    # ------------------------------------------------------------- qt events
+    def showEvent(self, event) -> None:
+        self._status_timer.start()
+        self._refresh_status()
+        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:
+        self._status_timer.stop()
+        super().hideEvent(event)
+
     # ------------------------------------------------------------- internals
     def _set_game_toggle(self, game: str) -> None:
         btn = self._btn_poe1 if game == "poe1" else self._btn_poe2
@@ -380,6 +703,8 @@ class SettingsWindow(QWidget):
         self._sound_check.setChecked(bool(c.alerts.sound))
         self._popup_spin.setValue(int(c.alerts.popup_seconds))
         self._max_popups_spin.setValue(int(c.alerts.max_popups))
+        self._scen_draft = [dc_replace(s) for s in c.scenarios]
+        self._reload_scenarios()
 
     def _load_game_fields(self, game: str) -> None:
         c = self._cfg
@@ -486,6 +811,7 @@ class SettingsWindow(QWidget):
         c.webhook.format = self._webhook_format.currentData() or "generic"
         c.webhook.chat_id = self._webhook_chat.text().strip()
         c.webhook.min_priority = float(self._webhook_minprio.value())
+        c.scenarios = list(self._scen_draft)
 
         enabled = [cid for cid, on in self._checks[self._editing_game].items() if on]
         # keep registry order

@@ -22,7 +22,7 @@ if not exist assets\app.ico (
 if exist assets\app.ico set ICON=--icon assets\app.ico
 
 REM ---- 4. build ---------------------------------------------------------------
-pyinstaller --noconsole --onefile --name NinjaAlert %ICON% main.py || goto :fail
+pyinstaller --noconsole --onefile --name NinjaAlert --add-data "assets;assets" %ICON% main.py || goto :fail
 
 echo.
 echo ============================================================
