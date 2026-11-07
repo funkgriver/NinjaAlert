@@ -32,6 +32,8 @@ python main.py --debug  # console logging + settings window
 
 Build the exe: `build.bat` → `dist\NinjaAlert.exe` (single file, no deps).
 Config lives next to the exe (`config.json`, created on first run; v1 configs migrate automatically).
+**`config.json` is personal** (it will hold your Telegram token and contact) — it is
+gitignored and never committed; `config.example.json` documents the full schema.
 
 ## Base setup (2 minutes)
 

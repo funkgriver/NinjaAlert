@@ -15,6 +15,7 @@ alerts.jsonl
 history-*.sqlite3*
 .smoke-history-*
 config.json.bak-*
+config.json
 .zcode/
 
 # IDE

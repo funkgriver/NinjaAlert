@@ -1,0 +1,129 @@
+{
+  "network": {
+    "base_url": "https://poe.ninja",
+    "contact": "",
+    "timeout_s": 20.0
+  },
+  "games": {
+    "poe1": {
+      "enabled": true,
+      "league": null,
+      "league_auto": true,
+      "league_start": "",
+      "poll_interval_minutes": 15.0,
+      "watch": [
+        "Currency",
+        "Fragment",
+        "DivinationCard",
+        "Scarab",
+        "Essence",
+        "UniqueWeapon",
+        "UniqueArmour",
+        "UniqueAccessory",
+        "UniqueJewel",
+        "SkillGem",
+        "Map"
+      ],
+      "custom_sections": []
+    },
+    "poe2": {
+      "enabled": false,
+      "league": null,
+      "league_auto": true,
+      "league_start": "",
+      "poll_interval_minutes": 15.0,
+      "watch": [
+        "Currency",
+        "Fragments",
+        "Essences",
+        "Runes",
+        "UncutGems",
+        "UniqueWeapons",
+        "UniqueArmours",
+        "UniqueAccessories",
+        "UniqueJewels"
+      ],
+      "custom_sections": []
+    }
+  },
+  "detector": {
+    "engine": "auto",
+    "z0": 5.0,
+    "z_inf": 3.0,
+    "tau_z_days": 7.0,
+    "gamma": 1.0,
+    "decay_start_days": 56.0,
+    "decay_width_days": 7.0,
+    "tau_h_days": 10.0,
+    "fast_h_min": 4.0,
+    "fast_h_max": 12.0,
+    "slow_h_min": 24.0,
+    "slow_h_max": 72.0,
+    "default_league_day": 30.0,
+    "window": 192,
+    "min_history": 24,
+    "mad_floor": 0.0025,
+    "min_log_move": 0.02,
+    "liquidity_l0": 20.0,
+    "max_gap_hours": 72.0,
+    "crossover_confirm": 0.75,
+    "rvol_ref": 1.5,
+    "no_volume_prior": 0.4,
+    "basis_saturation": 0.15,
+    "breadth_z": 2.0,
+    "breadth_min_peers": 8,
+    "weights": [
+      1.5,
+      1.2,
+      1.5,
+      1.0,
+      0.8,
+      0.6
+    ],
+    "bias": -3.0,
+    "suspect_at": 0.65,
+    "organic_at": 0.35,
+    "auto_calibrate": false,
+    "calibrate_interval_hours": 24.0,
+    "history_retention_days": 14.0
+  },
+  "thresholds": {
+    "jump_pct": 20.0,
+    "min_price": {
+      "poe1": 5.0,
+      "poe2": 0.05
+    },
+    "volume_mult": 3.0,
+    "volume_min_count": 10.0,
+    "mode": "any",
+    "baseline_window": 6,
+    "cooldown_minutes": 90.0
+  },
+  "alerts": {
+    "sound": true,
+    "popup_seconds": 15.0,
+    "max_popups": 5,
+    "price_display": "both",
+    "bucket_capacity": 5,
+    "refill_seconds": 120.0,
+    "cooldown_base_s": 1800.0,
+    "cooldown_max_s": 14400.0,
+    "escalation_factor": 1.5,
+    "max_digest_names": 4
+  },
+  "overlay": {
+    "corner": "bottom-right",
+    "margin": 24,
+    "opacity": 0.92
+  },
+  "webhook": {
+    "enabled": false,
+    "url": "",
+    "format": "generic",
+    "chat_id": "",
+    "min_priority": 0.0,
+    "max_per_minute": 12
+  },
+  "scenarios": [],
+  "leagues_seen": {}
+}
