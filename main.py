@@ -25,7 +25,7 @@ import sys
 from datetime import date
 from typing import Dict, Optional
 
-from PyQt6.QtCore import QObject, Qt
+from PyQt6.QtCore import QObject, QTimer, Qt
 from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
@@ -214,6 +214,15 @@ class NinjaAlertController(QObject):
         self._worker = AnalysisWorker(self._cfg, self._league_start_fn)
         self._worker.analyzed.connect(self._on_analyzed)
         self._worker.note.connect(self._on_worker_note)
+        # watchdog: a dead worker means silently dead monitoring - restart it
+        self._worker_watchdog = QTimer(self)
+        self._worker_watchdog.setInterval(60_000)
+        self._worker_watchdog.timeout.connect(self._check_worker_alive)
+
+    def _check_worker_alive(self) -> None:
+        if self._worker is not None and not self._worker.isRunning():
+            log.critical("analysis worker died - restarting it")
+            self._worker.start()
 
     def _build_pollers(self) -> None:
         for game in ("poe1", "poe2"):
@@ -263,6 +272,7 @@ class NinjaAlertController(QObject):
     def start(self) -> None:
         if self._worker is not None and not self._worker.isRunning():
             self._worker.start()
+        self._worker_watchdog.start()
         for worker in self._pollers.values():
             worker.start()
         if not self._greeted:

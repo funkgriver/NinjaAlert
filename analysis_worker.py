@@ -34,6 +34,7 @@ from advanced_analyzer import (
 from analyzer import AnomalyDetector
 from appconfig import app_dir
 from calibration import calibrate_from_ticks
+from diagnostics import process_rss_mb
 from models import Snapshot
 from scenarios import ScenarioEngine
 
@@ -41,6 +42,9 @@ log = logging.getLogger("ninjaalert.worker")
 
 GAMES = ("poe1", "poe2")
 PIPELINE_RETRY_SECONDS = 600.0
+QUEUE_MAX = 64                     # bound the command queue (dead-worker protection)
+CALIBRATION_MAX_ROWS = 200_000     # bound the refit replay regardless of DB size
+MEMORY_LOG_SECONDS = 1800.0        # periodic RSS note (leak observability)
 
 
 class AnalysisWorker(QThread):
@@ -51,15 +55,25 @@ class AnalysisWorker(QThread):
         super().__init__(parent)
         self._cfg = cfg
         self._league_start_fn = league_start_fn
-        self._q: "queue.Queue[tuple]" = queue.Queue()
+        self._q: "queue.Queue[tuple]" = queue.Queue(maxsize=QUEUE_MAX)
         self._stats_lock = threading.Lock()
         self._stats: Dict[str, Tuple[int, int]] = {}   # game -> (robust, basic)
         self._last_calibrate = time.time()
         self._last_pipeline_try = 0.0
+        self._last_memory_log = 0.0
         self._scenarios = ScenarioEngine()
 
     # --------------------------------------------------- control (GUI thread)
     def submit_snapshot(self, game: str, quotes, meta) -> None:
+        # bounded queue: a dead/stuck worker must not turn into a memory leak;
+        # the next poll cycle delivers fresh data anyway
+        if self._q.qsize() >= QUEUE_MAX:
+            try:
+                dropped = self._q.get_nowait()
+                log.warning("analysis queue full - dropped oldest command (%s)",
+                            dropped[0])
+            except queue.Empty:
+                pass
         self._q.put(("snapshot", game, quotes, meta))
 
     def apply_config(self, cfg) -> None:
@@ -77,7 +91,14 @@ class AnalysisWorker(QThread):
 
     # ------------------------------------------------------------ worker loop
     def run(self) -> None:
-        pipelines, basics = self._build_engines()
+        try:
+            pipelines, basics = self._build_engines()
+        except Exception:
+            # a dead worker means silently dead monitoring AND an unbounded
+            # GUI-side queue - never let this loop die
+            log.exception("engine construction failed completely - "
+                          "worker runs in degraded no-engine mode")
+            pipelines, basics = {g: None for g in GAMES}, {g: None for g in GAMES}
         log.info("analysis worker started (warm start complete)")
         running = True
         while running:
@@ -85,6 +106,7 @@ class AnalysisWorker(QThread):
                 item = self._q.get(timeout=0.5)
             except queue.Empty:
                 self._maybe_autocalibrate(pipelines)
+                self._maybe_log_memory()
                 continue
             cmd = item[0]
             try:
@@ -98,7 +120,10 @@ class AnalysisWorker(QThread):
                     running = False
             except Exception:          # never let the thread die
                 log.exception("analysis worker command failed (%s)", cmd)
-            self._update_stats(pipelines, basics)
+            try:
+                self._update_stats(pipelines, basics)
+            except Exception:
+                log.exception("stats update failed")
         for game in GAMES:
             if pipelines.get(game) is not None:
                 try:
@@ -106,6 +131,15 @@ class AnalysisWorker(QThread):
                 except Exception:
                     log.exception("closing pipeline failed (%s)", game)
         log.info("analysis worker stopped")
+
+    def _maybe_log_memory(self) -> None:
+        if time.time() - self._last_memory_log < MEMORY_LOG_SECONDS:
+            return
+        self._last_memory_log = time.time()
+        rss = process_rss_mb()
+        if rss is not None:
+            log.info("memory: working set %.0f MB, items tracked %s",
+                     rss, {g: s for g, s in (self.stats() or {}).items()})
 
     def _build_engines(self):
         pipelines: Dict[str, Optional[AnalysisPipeline]] = {}
@@ -220,7 +254,8 @@ class AnalysisWorker(QThread):
                 continue
             try:
                 ticks = pipeline.store.load_since(
-                    time.time() - c.history_retention_days * 86400.0)
+                    time.time() - c.history_retention_days * 86400.0,
+                    max_rows=CALIBRATION_MAX_ROWS)
                 analyzer = pipeline.analyzer
                 current_w = analyzer._weights or c.weights
                 current_b = analyzer._bias if analyzer._bias is not None else c.bias

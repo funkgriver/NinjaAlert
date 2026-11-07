@@ -214,9 +214,16 @@ class AnomalyAnalyzer:
         self.ready_keys.clear()
 
     def warm_start(self, ticks: Iterable[ItemTick], now: Optional[float] = None) -> int:
-        """Replay stored history to rebuild baselines without emitting anomalies."""
+        """Replay stored history (any order) to rebuild baselines silently."""
+        return self.warm_start_stream(sorted(ticks, key=lambda t: t.ts), now)
+
+    def warm_start_stream(self, ticks_sorted: Iterable[ItemTick],
+                          now: Optional[float] = None) -> int:
+        """Replay ts-ascending ticks with O(1) memory — pairs with
+        HistoryStore.iter_since so a large history streams instead of being
+        materialized in RAM first."""
         count = 0
-        for tick in sorted(ticks, key=lambda t: t.ts):
+        for tick in ticks_sorted:
             try:
                 t_days = self.phase.league_day(now or tick.ts,
                                                self._league_start(tick.key.split(":", 1)[0]))
@@ -230,6 +237,16 @@ class AnomalyAnalyzer:
                 continue                   # corrupt stored row must not kill warm start
             count += 1
         return count
+
+    def prune_states(self, older_than_ts: float) -> int:
+        """Drop baselines for items not seen since older_than_ts — item churn
+        (new league variants, removed items) must not grow the state dict
+        unboundedly within a league."""
+        stale = [k for k, st in self._states.items() if st.last_ts < older_than_ts]
+        for k in stale:
+            del self._states[k]
+            self.ready_keys.discard(k)
+        return len(stale)
 
     def process(self, snap: Snapshot, collect: Optional[list] = None) -> List[Anomaly]:
         c = self.cfg
@@ -341,12 +358,38 @@ class HistoryStore:
             self._con.executemany("INSERT OR IGNORE INTO ticks VALUES (?,?,?,?,?,?,?,?)", rows)
             self._con.commit()
 
-    def load_since(self, since_ts: float) -> List[ItemTick]:
-        with self._lock:
+    def load_since(self, since_ts: float, max_rows: Optional[int] = None) -> List[ItemTick]:
+        """Materialized variant of iter_since (bounded when max_rows is given)."""
+        return list(self.iter_since(since_ts, max_rows=max_rows))
+
+    def iter_since(self, since_ts: float, max_rows: Optional[int] = None):
+        """Stream ticks (key, name, category, price, volume, listings, aux, ts)
+        ordered by ts with O(1) memory — the idx_ticks_ts index provides the
+        order, so a multi-million-row history never has to be fetched whole.
+
+        The DB lock is held while the generator is alive; it is released in
+        ``finally`` when the generator is exhausted or closed, so consumers
+        must drain it (or let it go out of scope). With ``max_rows`` only the
+        most recent rows are kept (bounded buffer, lock held only for fetch).
+        """
+        if max_rows is not None and max_rows > 0:
+            with self._lock:
+                cur = self._con.execute(
+                    "SELECT key, name, category, price, volume, listings, aux, ts "
+                    "FROM ticks WHERE ts >= ? ORDER BY ts", (since_ts,))
+                window: Deque = deque((row for row in cur), maxlen=max_rows)
+            for row in window:
+                yield ItemTick(*row)
+            return
+        self._lock.acquire()
+        try:
             cur = self._con.execute(
-                "SELECT key, name, category, price, volume, listings, aux, ts FROM ticks "
-                "WHERE ts >= ? ORDER BY ts", (since_ts,))
-            return [ItemTick(*row) for row in cur.fetchall()]
+                "SELECT key, name, category, price, volume, listings, aux, ts "
+                "FROM ticks WHERE ts >= ? ORDER BY ts", (since_ts,))
+            for row in cur:
+                yield ItemTick(*row)
+        finally:
+            self._lock.release()
 
     def count(self) -> int:
         with self._lock:
@@ -440,8 +483,8 @@ class AnalysisPipeline:
         self.governor = AlertGovernor(alerts_cfg)
         self.store = HistoryStore(db_path)
         self._last_prune = 0.0
-        loaded = self.analyzer.warm_start(
-            self.store.load_since(time.time() - detector_cfg.history_retention_days * 86400.0))
+        loaded = self.analyzer.warm_start_stream(self.store.iter_since(
+            time.time() - detector_cfg.history_retention_days * 86400.0))
         log.info("Warm start replayed %d stored ticks (%s)", loaded, db_path.name)
 
     def ingest(self, ticks: Iterable[ItemTick]) -> None:
@@ -452,7 +495,11 @@ class AnalysisPipeline:
 
     def _maybe_prune(self) -> None:
         if time.time() - self._last_prune > 3600.0:
-            self.store.prune(time.time() - self.cfg.history_retention_days * 86400.0)
+            cutoff = time.time() - self.cfg.history_retention_days * 86400.0
+            self.store.prune(cutoff)
+            dropped = self.analyzer.prune_states(cutoff)
+            if dropped:
+                log.info("pruned %d stale item baselines", dropped)
             self._last_prune = time.time()
 
     def handle(self, snap: Snapshot,

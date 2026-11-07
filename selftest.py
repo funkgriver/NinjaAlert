@@ -488,6 +488,60 @@ def test_hardening() -> None:
                     raise item
                 return item
 
+        # 304 on /leagues must serve the cache, never hit resp.json()
+        from api_client import League
+        client4 = NinjaApiClient()
+        client4._leagues["poe1"] = [League(id="Allflame", name="Allflame")]
+        client4._etags[client4._cache_key("http://fake/poe1/api/economy/leagues", None)] = "e1"
+        client4._sess = FakeSession([FakeResp(304)])
+        got = client4.get_leagues("poe1", force=True)
+        check("api: 304 leagues served from cache",
+              [l.id for l in got] == ["Allflame"], str(got))
+        client5 = NinjaApiClient()
+        client5._etags[client5._cache_key("http://fake/poe1/api/economy/leagues", None)] = "e1"
+        client5._sess = FakeSession([FakeResp(304), FakeResp(200, [{"id": "L1"}, {"id": "L2"}])])
+        got2 = client5.get_leagues("poe1", force=True)
+        check("api: 304 leagues without cache refetches",
+              [l.id for l in got2] == ["L1", "L2"], str(got2))
+
+        # streaming load: iter_since == load_since, max_rows keeps the newest
+        hist = [ItemTick(key="k", name="K", category="poe1:x:Currency",
+                         price=100.0 + i, volume=None, listings=None, aux=None,
+                         ts=1_000_000.0 + i * 900.0) for i in range(40)]
+        with tempfile.TemporaryDirectory() as td:
+            store = HistoryStore(Path(td) / "h.sqlite3")
+            store.append(hist)
+            streamed = list(store.iter_since(0.0))
+            check("memory: iter_since == load_since",
+                  [t.ts for t in streamed] == [t.ts for t in store.load_since(0.0)])
+            tail = list(store.iter_since(0.0, max_rows=5))
+            check("memory: max_rows keeps newest in order",
+                  [t.ts for t in tail] == sorted(t.ts for t in tail) and len(tail) == 5)
+            store.close()
+
+            # bounded calibration replay uses max_rows without error
+            from calibration import calibrate_from_ticks
+            cfgc = DetectorCfg()
+            res = calibrate_from_ticks(cfgc, lambda g: "", hist,
+                                       cfgc.weights, cfgc.bias)
+            check("memory: calibration replay bounded path runs",
+                  res is None or res.improved or "insufficient" in res.reason,
+                  str(res and res.reason))
+
+        # analyzer state pruning (item churn must not grow the dict forever)
+        anp = AnomalyAnalyzer(DetectorCfg(), lambda g: "")
+        anp._states["old:item"] = anp._fresh(hist[0])
+        anp._states["new:item"] = anp._fresh(hist[-1])
+        anp.ready_keys.add("old:item")
+        dropped = anp.prune_states(hist[-1].ts)
+        check("memory: stale states pruned",
+              dropped == 1 and "old:item" not in anp._states
+              and "new:item" in anp._states and "old:item" not in anp.ready_keys)
+
+        from analysis_worker import process_rss_mb
+        rss = process_rss_mb()
+        check("memory: process_rss_mb usable", rss is None or rss > 0, str(rss))
+
         slept: list = []
         real_sleep = ac.time.sleep
         ac.time.sleep = lambda s: slept.append(s)
@@ -776,6 +830,18 @@ def test_qt() -> None:
               "7 robust + 21 basic" in settings._live_labels["poe1"].text(),
               settings._live_labels["poe1"].text())
         settings.hide()
+
+        # icon cache LRU cap (bounded pixmap memory)
+        from ui_overlay import ICON_CACHE_MAX, IconLoader
+        loader = IconLoader()
+        for i in range(ICON_CACHE_MAX + 50):
+            loader._cache[f"url{i}"] = None
+        loader._evict()
+        check("qt: icon cache LRU capped", len(loader._cache) == ICON_CACHE_MAX
+              and "url0" not in loader._cache
+              and f"url{ICON_CACHE_MAX + 49}" in loader._cache,
+              str(len(loader._cache)))
+
         QTimer.singleShot(400, app.quit)
         app.exec()
     except Exception as exc:

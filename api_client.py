@@ -147,7 +147,16 @@ class NinjaApiClient:
         fresh = (time.time() - self._leagues_ts.get(game, 0.0)) < LEAGUES_TTL_SECONDS
         if cached and fresh and not force:
             return cached
-        resp = self._request(f"{self._base_url_fn().rstrip('/')}/{game}/api/economy/leagues")
+        url = f"{self._base_url_fn().rstrip('/')}/{game}/api/economy/leagues"
+        resp = self._request(url)
+        if resp is UNCHANGED:
+            # site answered 304 (league list unchanged since the cached ETag):
+            # serve the in-memory cache; without one, drop the ETag and refetch
+            if cached:
+                self._leagues_ts[game] = time.time()
+                return cached
+            self._etags.pop(self._cache_key(url, None), None)
+            resp = self._request(url)
         data = self._json(resp, f"{game}/leagues")
         if not isinstance(data, list):
             raise ApiError(f"unexpected league payload for {game}")
@@ -321,6 +330,10 @@ class NinjaApiClient:
         return url
 
     # ------------------------------------------------------------ transport
+    @staticmethod
+    def _cache_key(url: str, params: Optional[Dict[str, str]]) -> str:
+        return url + ("?" + urlencode(sorted((params or {}).items())) if params else "")
+
     def _request(self, url: str, params: Optional[Dict[str, str]] = None):
         """GET with ETag caching, retries and error mapping.
 
@@ -329,7 +342,7 @@ class NinjaApiClient:
         fail immediately. Returns a requests.Response, or the UNCHANGED
         sentinel on HTTP 304.
         """
-        cache_key = url + ("?" + urlencode(sorted((params or {}).items())) if params else "")
+        cache_key = self._cache_key(url, params)
         headers: Dict[str, str] = {"Accept": "application/json",
                                    "User-Agent": self._user_agent_fn()}
         etag = self._etags.get(cache_key)

@@ -33,6 +33,13 @@ def run_checks(cfg, base_dir: str, probe_api: bool = False,
     results: List[CheckResult] = []
     d = cfg.detector
 
+    rss = process_rss_mb()
+    if rss is not None:
+        results.append(CheckResult(
+            "Process memory", rss < 1024.0,
+            f"working set {rss:.0f} MB"
+            + (" (unusually high — check ninjaalert.log 'memory:' lines)" if rss >= 1024.0 else "")))
+
     weights_ok = (len(d.weights) == 6
                   and all(isinstance(w, (int, float)) and 0.0 <= w <= 5.0 for w in d.weights))
     results.append(CheckResult(
@@ -62,6 +69,45 @@ def run_checks(cfg, base_dir: str, probe_api: bool = False,
     if probe_api:
         results.append(_api_check(api_fn))
     return results
+
+
+def process_rss_mb() -> Optional[float]:
+    """Resident memory of this process in MB (stdlib only)."""
+    try:
+        import sys
+        if sys.platform == "win32":
+            import ctypes
+
+            class _PMC(ctypes.Structure):
+                _fields_ = [("cb", ctypes.c_ulong), ("PageFaultCount", ctypes.c_ulong),
+                            ("PeakWorkingSetSize", ctypes.c_size_t),
+                            ("WorkingSetSize", ctypes.c_size_t),
+                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                            ("PagefileUsage", ctypes.c_size_t),
+                            ("PeakPagefileUsage", ctypes.c_size_t)]
+
+            kernel32 = ctypes.windll.kernel32
+            psapi = ctypes.windll.psapi
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p   # pseudo-handle (-1)
+            handle = kernel32.GetCurrentProcess()
+            psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p,
+                                                   ctypes.POINTER(_PMC),
+                                                   ctypes.c_ulong]
+            pmc = _PMC()
+            pmc.cb = ctypes.sizeof(_PMC)
+            if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
+                return None
+            return pmc.WorkingSetSize / (1024.0 * 1024.0)
+        with open("/proc/self/status", "r", encoding="ascii") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1]) / 1024.0
+    except Exception:
+        return None
+    return None
 
 
 def _db_check(base_dir: str, game: str) -> CheckResult:

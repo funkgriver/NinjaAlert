@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from collections import OrderedDict
 from typing import Callable, Dict, List, Optional
 
 from PyQt6.QtCore import (
@@ -83,17 +84,21 @@ def _beep_two_tone() -> None:
 
 
 # ---------------------------------------------------------------- icon cache
+ICON_CACHE_MAX = 512          # LRU cap: alerted-item icons must not accumulate
+
+
 class IconLoader(QObject):
-    """Async icon downloader with an in-memory cache (no disk persistence)."""
+    """Async icon downloader with a bounded in-memory cache (no disk writes)."""
 
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._nam = QNetworkAccessManager(self)
-        self._cache: Dict[str, Optional[QPixmap]] = {}
+        self._cache: "OrderedDict[str, Optional[QPixmap]]" = OrderedDict()
         self._pending: Dict[str, List[Callable]] = {}
 
     def get(self, url: str, callback: Callable[[Optional[QPixmap]], None]) -> None:
         if url in self._cache:
+            self._cache.move_to_end(url)       # LRU touch
             callback(self._cache[url])
             return
         self._pending.setdefault(url, []).append(callback)
@@ -119,11 +124,16 @@ class IconLoader(QObject):
         finally:
             reply.deleteLater()
         self._cache[url] = pix
+        self._evict()
         for cb in self._pending.pop(url, []):
             try:
                 cb(pix)
             except Exception:
                 log.exception("icon callback failed")
+
+    def _evict(self) -> None:
+        while len(self._cache) > ICON_CACHE_MAX:
+            self._cache.popitem(last=False)    # evict least-recently-used
 
 
 # --------------------------------------------------------------- one overlay
