@@ -230,6 +230,8 @@ def test_parsers() -> None:
     check("price: both keeps legacy hint",
           "≈" in format_price(500.0, m1, "both")
           and "div" in format_price(500.0, m1, "both"))
+    check("price: no hint for sub-1-unit conversions",
+          "≈" not in format_price(100.0, m1, "both"), format_price(100.0, m1, "both"))
     check("price: secondary without rate falls back",
           format_price(5.0, FetchMeta(game="poe1", league="L", category="Currency",
                                       source="exchange", primary="chaos"),

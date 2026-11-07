@@ -131,11 +131,10 @@ def format_price(price: float, meta: FetchMeta, display: str = "both") -> str:
         return f"{format_number(price * sec_rate)}{sec_unit}"
 
     text = f"{format_number(price)}{unit}"
-    if display in ("both", "secondary") and sec_rate:
-        if meta.game == "poe1" and price >= 20:
-            text += f"  ≈ {format_number(price * sec_rate)} {sec_unit}"
-        elif meta.game == "poe2" and price < 0.5:
-            text += f"  ≈ {format_number(price * sec_rate)} {sec_unit}"
+    # conversion hint only when the secondary amount is meaningful (>= 1 unit):
+    # '500c ≈ 1.18 div' reads fine, '100c ≈ 0.2353 div' is just noise
+    if display in ("both", "secondary") and sec_rate and price * sec_rate >= 1.0:
+        text += f"  ≈ {format_number(price * sec_rate)} {sec_unit}"
     return text
 
 

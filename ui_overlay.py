@@ -310,7 +310,9 @@ class NotificationOverlay(QWidget):
         elif alert.list_count is not None:
             parts.append(f"listings {format_number(alert.list_count)}")
         parts.append(alert.league)
-        self._meta_label.setText("  ·  ".join(parts))
+        fm_meta = self._meta_label.fontMetrics()
+        self._meta_label.setText(fm_meta.elidedText(
+            "  ·  ".join(parts), Qt.TextElideMode.ElideRight, TOAST_WIDTH - 124))
 
     # ---------------------------------------------------------------- show
     def show_at(self, pos: QPoint, opacity: float) -> None:
