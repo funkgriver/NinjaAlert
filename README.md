@@ -9,13 +9,17 @@ Built against the 2026 poe.ninja economy API (exchange + stash item overviews,
 ETag-cached, per [poe.ninja/docs/api](https://poe.ninja/docs/api)).
 
 ```
-PollWorker×2 (QThreads, one per game)  →  Engine (per game)  →  AlertGovernor
-  leagues + watched categories            auto: robust z · RVOL · EMA crossover
-  ETag / 304 · 429 back-off               · manipulation M · token bucket + digest
-                                          basic: % jump + listing surge (warmup)
+PollWorker×2 (QThreads, one per game)  →  AnalysisWorker (QThread, engine owner)
+  leagues + watched categories             per game: robust z · RVOL · EMA crossover
+  ETag / 304 · 429+Retry-After back-off    · manipulation M · AlertGovernor
+  section auto-discovery                   · scenarios · basic engine (warmup)
                                                               ↓
-                              popups · beep · webhook (Telegram) · alerts.jsonl · SQLite
+              popups · beep · webhook (Telegram) · alerts.jsonl · SQLite (WAL)
 ```
+
+All heavy work (robust statistics, SQLite writes, warm-start replay) runs on the
+worker thread — the GUI only dispatches alerts. The worker queue, icon cache and
+history replay are bounded by design, and process RSS is logged every 30 minutes.
 
 ## Quick start
 
@@ -41,15 +45,16 @@ Config lives next to the exe (`config.json`, created on first run; v1 configs mi
 
 ## Settings tabs (v2.1)
 
-- **Monitoring** — everything from the base setup: games, league, watched categories,
-  thresholds, alerts and webhook automation.
+- **Monitoring** — everything from the base setup: games, league, watched categories
+  (with a **type-to-filter box** — `frag` → Fragments, `s` → Fragments, Cards, Belts…),
+  thresholds, **price display** (chaos / divine / both), alerts and webhook automation.
 - **Scenarios** — your own alert rules: match game/category/name substring, trigger on
   price-change %, |z-score|, relative volume or priority (≥/≤), optional direction filter,
   per-item cooldown. Scenario alerts bypass the alert budget and are tagged
   `SCENARIO·<name>` in popups, `alerts.jsonl` and webhooks.
-- **Status** — live snapshot (poller state, leagues, robust/basic items tracked, last event)
-  plus one-click **automated checks** (weights, SQLite WAL + index, journal, icon asset,
-  log tail) and a live **poe.ninja probe**.
+- **Status** — live snapshot (poller state, leagues, robust/basic items tracked, last
+  event, **process RSS**) plus one-click **automated checks** (weights, SQLite WAL +
+  index, journal, icon asset, log tail) and a live **poe.ninja probe**.
 - **Auto sections** — once a day the app parses poe.ninja's economy index: brand-new
   categories are probed against the API, registered and auto-watched; watched sections that
   keep answering 404 are auto-cleared (with a tray notification).
@@ -93,12 +98,34 @@ python -c "import json;rows=sorted([json.loads(l) for l in open('alerts.jsonl',e
 Recheck live schemas anytime: `python selftest.py --live` · one real headless cycle:
 `python tools/smoke_cycle.py [poe2]`.
 
+## Tuning, calibration & memory
+
+- **Weight calibration** — the manipulation classifier's weights can be refit from the
+  stored history (pseudo-labelled from the model's own confident decisions, with min-sample
+  gates, weight clamps and a holdout log-loss gate):
+  ```bash
+  python tools/calibrate.py            # preview: suggested weights + Youden-J thresholds
+  python tools/calibrate.py --apply    # write improved weights into config.json (backup first)
+  ```
+  Optional in-app refit: `detector.auto_calibrate` in `config.json` (default off),
+  every `detector.calibrate_interval_hours`.
+- **Memory** — replay/queues/caches are bounded (streamed warm start, capped worker queue,
+  LRU icon cache, hourly baseline pruning). Verify anytime:
+  `python tools/mem_stress.py [--cycles 120]` pushes real snapshot volume through the
+  pipeline and reports RSS growth. RSS is also logged every 30 min and shown in the
+  Status tab's "Process memory" check.
+
 ## Layout
 
-`main.py` (tray/controller) · `poller.py` (per-game QThread) · `api_client.py`
-(2026 API, ETag, retries) · `categories.py` (46+23 category registry) ·
-`analyzer.py` (basic engine) · `advanced_analyzer.py` (phase model, robust z,
-manipulation, governor, SQLite) · `models.py` (immutable contracts) ·
-`webhook.py` (Telegram/JSON + journal) · `ui_overlay.py` / `ui_settings.py`.
+`main.py` (tray/controller) · `analysis_worker.py` (engine-owner QThread) ·
+`poller.py` (per-game QThread + section discovery/auto-clear) · `api_client.py`
+(2026 API, ETag/304, jittered retries, Retry-After) · `categories.py` (46+23
+category registry) · `analyzer.py` (basic engine) · `advanced_analyzer.py`
+(phase model, robust z, manipulation, governor, SQLite history) ·
+`calibration.py` + `tools/calibrate.py` (weight refit) · `scenarios.py`
+(user alert rules) · `discovery.py` (site-index parsing) · `diagnostics.py`
+(automated checks) · `models.py` (immutable contracts) · `webhook.py`
+(Telegram/JSON + journal) · `ui_overlay.py` / `ui_settings.py` ·
+`selftest.py` (offline QA suite).
 
 Be polite: poe.ninja has no SLA and blocks abusive clients. Personal-use tool.
