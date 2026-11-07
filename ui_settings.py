@@ -32,7 +32,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMenu,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -441,21 +440,13 @@ class SettingsWindow(QWidget):
         form_mon.addWidget(box_alerts)
 
         # ---- webhook automation ------------------------------------------------
-        box_hook = QGroupBox("Webhook automation (Telegram / any JSON endpoint)")
+        box_hook = QGroupBox("Webhook automation (any JSON endpoint)")
         form_w = QFormLayout(box_hook)
         self._webhook_check = QCheckBox()
         form_w.addRow("Send alerts to webhook", self._webhook_check)
         self._webhook_url = QLineEdit()
-        self._webhook_url.setPlaceholderText(
-            "https://api.telegram.org/bot<TOKEN>/sendMessage  — or any POST endpoint")
+        self._webhook_url.setPlaceholderText("https://your-endpoint/alerts  (POST, full anomaly JSON)")
         form_w.addRow("URL", self._webhook_url)
-        self._webhook_format = QComboBox()
-        self._webhook_format.addItem("Generic JSON POST", "generic")
-        self._webhook_format.addItem("Telegram sendMessage", "telegram")
-        form_w.addRow("Format", self._webhook_format)
-        self._webhook_chat = QLineEdit()
-        self._webhook_chat.setPlaceholderText("Telegram chat id (format=telegram only)")
-        form_w.addRow("Chat id", self._webhook_chat)
         self._webhook_minprio = QDoubleSpinBox()
         self._webhook_minprio.setRange(0.0, 1000.0)
         self._webhook_minprio.setSingleStep(0.5)
@@ -556,13 +547,13 @@ class SettingsWindow(QWidget):
         btn_edit.clicked.connect(self._scenario_edit)
         btn_del = QPushButton("Remove")
         btn_del.clicked.connect(self._scenario_remove)
-        btn_presets = QPushButton("Presets…")
-        btn_presets.setToolTip("Ready-made scenario templates")
-        presets_menu = QMenu(btn_presets)
+        self._preset_combo = QComboBox()
+        self._preset_combo.addItem("Add preset…", None)
         for label, kwargs in SCENARIO_PRESETS:
-            presets_menu.addAction(label, lambda kw=kwargs: self._add_preset(kw))
-        btn_presets.setMenu(presets_menu)
-        for b in (btn_add, btn_edit, btn_del, btn_presets):
+            self._preset_combo.addItem(label, kwargs)
+        self._preset_combo.setToolTip("Ready-made scenario templates (dropdown)")
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_pick)
+        for b in (btn_add, btn_edit, btn_del, self._preset_combo):
             row.addWidget(b)
         row.addStretch(1)
         v.addLayout(row)
@@ -570,6 +561,14 @@ class SettingsWindow(QWidget):
         note.setStyleSheet("color: #6b7280;")
         v.addWidget(note)
         return page
+
+    def _on_preset_pick(self, idx: int) -> None:
+        kwargs = self._preset_combo.itemData(idx)
+        if kwargs:
+            self._add_preset(kwargs)
+        self._preset_combo.blockSignals(True)
+        self._preset_combo.setCurrentIndex(0)   # reset to placeholder
+        self._preset_combo.blockSignals(False)
 
     def _add_preset(self, kwargs: dict) -> None:
         self._scen_draft.append(ScenarioCfg(**kwargs))
@@ -749,11 +748,8 @@ class SettingsWindow(QWidget):
         self._engine_idx = self._engine_combo.findData(c.detector.engine)
         self._engine_combo.setCurrentIndex(max(self._engine_idx, 0))
         self._contact_edit.setText(c.network.contact)
-        idx_w = self._webhook_format.findData(c.webhook.format)
-        self._webhook_format.setCurrentIndex(max(idx_w, 0))
         self._webhook_check.setChecked(bool(c.webhook.enabled))
         self._webhook_url.setText(c.webhook.url)
-        self._webhook_chat.setText(c.webhook.chat_id)
         self._webhook_minprio.setValue(float(c.webhook.min_priority))
         self._load_game_fields(self._editing_game)
         self._sound_check.setChecked(bool(c.alerts.sound))
@@ -879,8 +875,6 @@ class SettingsWindow(QWidget):
         c.alerts.price_display = self._price_display_combo.currentData() or "both"
         c.webhook.enabled = self._webhook_check.isChecked()
         c.webhook.url = self._webhook_url.text().strip()
-        c.webhook.format = self._webhook_format.currentData() or "generic"
-        c.webhook.chat_id = self._webhook_chat.text().strip()
         c.webhook.min_priority = float(self._webhook_minprio.value())
         c.scenarios = list(self._scen_draft)
 

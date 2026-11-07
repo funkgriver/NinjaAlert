@@ -10,7 +10,7 @@ Automation model (spec: "PoE Market Anomaly Detector", Nov 2026):
     delta engine as warmup fallback until robust baselines are ready
   * alert budget: token bucket + escalating cooldowns + digest lines
   * league rollover: auto-detected -> history reset, league_start recorded
-  * webhook (generic JSON or Telegram) + alerts.jsonl journal
+  * webhook (generic JSON POST) + alerts.jsonl journal
 
 Usage:
     python main.py            # start monitoring
@@ -188,6 +188,7 @@ class NinjaAlertController(QObject):
         self._current_league: Dict[str, str] = {}    # league from leagues endpoint
         self._runtime_new_leagues: set = set()       # rollovers detected while running
         self._poller_states: Dict[str, str] = {}
+        self._scan_done: Dict[str, int] = {}           # per-game cycle progress
         self._last_detail = ""
         self._greeted = False
 
@@ -235,7 +236,8 @@ class NinjaAlertController(QObject):
             worker.snapshot.connect(lambda q, m, g=game: self._on_snapshot(g, q, m))
             worker.leagues_found.connect(self._on_leagues)
             worker.cycle_begin.connect(lambda t: self._on_cycle_begin(t))
-            worker.category_done.connect(lambda lbl, n: self._on_category_done(lbl, n))
+            worker.category_done.connect(
+                lambda g, lbl, n: self._on_category_done(g, lbl, n))
             worker.note.connect(self._on_note)
             worker.cycle_error.connect(self._on_cycle_error)
             worker.state_changed.connect(lambda s, g=game: self._on_state_changed(g, s))
@@ -539,9 +541,17 @@ class NinjaAlertController(QObject):
     def _on_cycle_begin(self, text: str) -> None:
         self._tray.setToolTip(f"NinjaAlert — {text}")
 
-    def _on_category_done(self, label: str, count: int) -> None:
+    def _on_category_done(self, game: str, label: str, count: int) -> None:
+        done = self._scan_done.get(game, 0) + 1
+        self._scan_done[game] = done
+        total = len(self._cfg.watched(game))
         detail = f"{label}: unchanged" if count < 0 else f"{label}: {count} items"
-        self._last_detail = detail
+        self._last_detail = f"[{done}/{total}] {detail}"   # visible scan progress
+        if self._worker is not None:
+            stats = self._worker.stats().get(game, (0, 0))
+            self._tray.setToolTip(
+                f"NinjaAlert — scanning {game}: {done}/{total} sections · "
+                f"{stats[0]} robust + {stats[1]} basic")
 
     def _on_note(self, text: str) -> None:
         log.info("note: %s", text)
@@ -556,6 +566,8 @@ class NinjaAlertController(QObject):
 
     def _on_state_changed(self, game: str, state: str) -> None:
         self._poller_states[game] = state
+        if state == "fetching":
+            self._scan_done[game] = 0                  # new cycle: progress resets
         aggregate = self._aggregate_state()
         self._tray.setIcon(render_tray_icon(
             {"error": "error", "paused": "paused"}.get(aggregate, "ok")))

@@ -5,7 +5,7 @@ Schema v2 (spec-aligned):
   network.base_url     -> point at a shared cache/proxy when distributing
   games.<g>            -> per-game enabled/league/league_start/interval/watch
   detector.engine      -> "auto" (phase-adjusted robust engine + basic warmup) | "basic"
-  webhook              -> optional outbound notifications (generic JSON or Telegram)
+  webhook              -> optional outbound notifications (generic JSON POST)
 
 Legacy v1 configs (top-level game/league/watch/...) are migrated on load.
 The config file lives next to the executable (portable style).
@@ -29,7 +29,6 @@ CONFIG_FILENAME = "config.json"
 VALID_GAMES = ("poe1", "poe2")
 VALID_CORNERS = ("bottom-right", "bottom-left", "top-right", "top-left")
 VALID_ENGINES = ("auto", "basic")
-VALID_WEBHOOK_FORMATS = ("generic", "telegram")
 VALID_PRICE_DISPLAY = ("primary", "secondary", "both")
 
 
@@ -165,9 +164,7 @@ class Overlay:
 @dataclass
 class WebhookCfg:
     enabled: bool = False
-    url: str = ""                         # generic POST endpoint or Telegram bot API URL
-    format: str = "generic"               # generic | telegram
-    chat_id: str = ""                     # telegram target chat (format=telegram)
+    url: str = ""                         # generic POST endpoint (full anomaly JSON)
     min_priority: float = 0.0             # only send anomalies with priority >= this
     max_per_minute: int = 12
 
@@ -426,12 +423,6 @@ class Config:
         self.overlay.opacity = min(max(self.overlay.opacity, 0.3), 1.0)
         if self.overlay.corner not in VALID_CORNERS:
             self.overlay.corner = "bottom-right"
-        if self.webhook.format not in VALID_WEBHOOK_FORMATS:
-            self.webhook.format = "generic"
-        if (self.webhook.enabled and self.webhook.format == "telegram"
-                and (not self.webhook.url.strip() or not self.webhook.chat_id.strip())):
-            log.warning("webhook: telegram format needs both the bot API URL/token "
-                        "and a chat id - notifications stay off until configured")
         seen_names: set = set()
         kept: List[ScenarioCfg] = []
         for raw in list(self.scenarios):

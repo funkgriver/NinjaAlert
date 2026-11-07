@@ -178,19 +178,11 @@ def _log_check(base_dir: str) -> CheckResult:
 def _webhook_check(cfg) -> CheckResult:
     w = cfg.webhook
     if not w.enabled:
-        return CheckResult("Webhook / Telegram", True, "disabled")
-    if w.format == "telegram":
-        if not w.chat_id.strip():
-            return CheckResult("Webhook / Telegram", False,
-                               "telegram format needs a chat id")
-        url = w.url.strip()
-        looks_like_token = bool(url) and not url.lower().startswith(("http://", "https://"))
-        return CheckResult("Webhook / Telegram", True,
-                           "bot token configured (sendMessage URL built automatically)"
-                           if looks_like_token else f"endpoint set, chat {w.chat_id}")
+        return CheckResult("Webhook", True, "disabled")
     if not w.url.lower().startswith(("http://", "https://")):
-        return CheckResult("Webhook / Telegram", False, "URL is not an http(s) endpoint")
-    return CheckResult("Webhook / Telegram", True, f"endpoint set (min priority {w.min_priority})")
+        return CheckResult("Webhook", False, "URL is not an http(s) endpoint")
+    return CheckResult("Webhook", True,
+                       f"endpoint set (min priority {w.min_priority})")
 
 
 def _api_check(api_fn: Optional[Callable[[], Any]]) -> CheckResult:

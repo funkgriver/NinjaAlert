@@ -104,6 +104,7 @@
     "popup_seconds": 15.0,
     "max_popups": 5,
     "price_display": "both",
+    "confirm_rescan_seconds": 120.0,
     "bucket_capacity": 5,
     "refill_seconds": 120.0,
     "cooldown_base_s": 1800.0,
@@ -119,8 +120,6 @@
   "webhook": {
     "enabled": false,
     "url": "",
-    "format": "generic",
-    "chat_id": "",
     "min_priority": 0.0,
     "max_per_minute": 12
   },

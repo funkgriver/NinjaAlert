@@ -43,7 +43,7 @@ class PollWorker(QThread):
     snapshot = pyqtSignal(object, object)          # list[ItemQuote], FetchMeta
     leagues_found = pyqtSignal(str, list)          # game, [league ids] (index 0 = current)
     cycle_begin = pyqtSignal(str)                  # "poe1 · Allflame"
-    category_done = pyqtSignal(str, int)           # label, quote count
+    category_done = pyqtSignal(str, str, int)      # game, label, quote count
     note = pyqtSignal(str)                         # transient status line
     cycle_error = pyqtSignal(str)                  # human-readable failure
     state_changed = pyqtSignal(str)                # fetching|waiting|paused|disabled|error
@@ -188,11 +188,11 @@ class PollWorker(QThread):
 
             self._unavail_strikes.pop(cat_id, None)   # alive again: reset the strike counter
             if result is UNCHANGED:
-                self.category_done.emit(label, -1)  # -1 = not modified
+                self.category_done.emit(self.game, label, -1)  # -1 = not modified
                 continue
             quotes: List = result  # type: ignore[assignment]
             self.snapshot.emit(quotes, meta)
-            self.category_done.emit(label, len(quotes))
+            self.category_done.emit(self.game, label, len(quotes))
 
         if not had_error:
             self._maybe_autoclear()

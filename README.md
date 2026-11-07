@@ -2,7 +2,7 @@
 
 Windows tray app that monitors **poe.ninja** (PoE 1 + PoE 2, both games in parallel),
 detects price/liquidity anomalies with **league-phase-adjusted robust statistics**,
-and pushes **draggable transparent popups**, optional **Telegram/webhook** messages
+and pushes **draggable transparent popups**, optional **webhook** messages
 and a **sound cue** — without flooding you.
 
 Built against the 2026 poe.ninja economy API (exchange + stash item overviews,
@@ -14,7 +14,7 @@ PollWorker×2 (QThreads, one per game)  →  AnalysisWorker (QThread, engine own
   ETag / 304 · 429+Retry-After back-off    · manipulation M · AlertGovernor
   section auto-discovery                   · scenarios · basic engine (warmup)
                                                               ↓
-              popups · beep · webhook (Telegram) · alerts.jsonl · SQLite (WAL)
+              popups · beep · webhook (JSON) · alerts.jsonl · SQLite (WAL)
 ```
 
 All heavy work (robust statistics, SQLite writes, warm-start replay) runs on the
@@ -50,6 +50,8 @@ gitignored and never committed; `config.example.json` documents the full schema.
 - **Monitoring** — everything from the base setup: games, league, watched categories
   (with a **type-to-filter box** — `frag` → Fragments, `s` → Fragments, Cards, Belts…),
   thresholds, **price display** (chaos / divine / both), alerts and webhook automation.
+  Live **scan progress** (`[4/11] Currency: 99 items`) in the tray tooltip and status line
+  so you always see the scanner is working.
 - **Scenarios** — your own alert rules: match game/category/name substring, trigger on
   price-change %, |z-score|, relative volume or priority (≥/≤), optional direction filter,
   per-item cooldown. Scenario alerts bypass the alert budget and are tagged
@@ -73,9 +75,11 @@ gitignored and never committed; `config.example.json` documents the full schema.
   from the API's image URLs).
 - **Auto sections** — once a day the app parses poe.ninja's economy index: brand-new
   categories are probed against the API, registered and auto-watched; watched sections that
-  keep answering 404 are auto-cleared (with a tray notification).
-- **Telegram shortcut** — pasting just the bot token (`123456:ABC-…`) instead of the full
-  `sendMessage` URL works too; a missing chat id is skipped gracefully with a warning.
+  keep answering 404 are auto-cleared (with a tray notification). League rollover resets
+  baselines and seeds custom sections again.
+- **Scenario presets** — Scenarios tab → *Add preset…* dropdown: Divine moves (poe1
+  Currency ≥10% up), Dump watch (≤-15% down), Volume burst (RVOL ×5), High-conviction
+  (|z| ≥4.5), Top priority (≥3), Whale gear (poe1 uniques ≥15% up). Edit any copy freely.
 
 ## Auto alerts
 
@@ -90,10 +94,10 @@ gitignored and never committed; `config.example.json` documents the full schema.
 - **Alert budget** — ranked by priority, admitted through a token bucket (5 tokens,
   1 per 2 min); re-alerts need ≥1.5× the last priority; overflow collapses into one
   digest popup ("+7 more moves · Scarab ×3 …").
-- **Webhook/Telegram** — Settings → *Webhook automation*: tick, paste
-  `https://api.telegram.org/bot<TOKEN>/sendMessage`, set **Format = Telegram** + your
-  chat id, set **Min priority** (start at 0; raise if too chatty). Generic JSON POST
-  works for any other endpoint. Rate-limited, failures never block the UI.
+- **Webhook** — Settings → *Webhook automation*: tick, paste any POST endpoint,
+  set **Min priority** (start at 0; raise if too chatty). The full anomaly JSON
+  (incl. `key`, `icon`, `source`, `details_id`) is POSTed. Rate-limited, failures
+  never block the UI.
 - **Pause/Check-now** from the tray menu; both games switchable independently.
 
 ## Analyzing
@@ -141,7 +145,7 @@ category registry) · `analyzer.py` (basic engine) · `advanced_analyzer.py`
 `calibration.py` + `tools/calibrate.py` (weight refit) · `scenarios.py`
 (user alert rules) · `discovery.py` (site-index parsing) · `diagnostics.py`
 (automated checks) · `models.py` (immutable contracts) · `webhook.py`
-(Telegram/JSON + journal) · `ui_overlay.py` / `ui_settings.py` ·
+(JSON webhook + journal) · `ui_overlay.py` / `ui_settings.py` / `ui_history.py` ·
 `selftest.py` (offline QA suite).
 
 Be polite: poe.ninja has no SLA and blocks abusive clients. Personal-use tool.

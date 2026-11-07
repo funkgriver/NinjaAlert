@@ -2,9 +2,7 @@
 
 A daemon-thread sender: the GUI thread enqueues payloads (never blocks the
 overlay), the worker rate-limits (max_per_minute), filters by min_priority
-and POSTs JSON. Two formats:
-  generic  - full anomaly JSON to any endpoint (Discord via proxy, n8n, custom)
-  telegram - {"chat_id", "text"} body to the Telegram Bot API sendMessage URL
+and POSTs the full anomaly JSON to any endpoint (n8n, Discord via proxy, ...).
 
 Failures are logged and dropped; they never block the overlay.
 """
@@ -24,7 +22,7 @@ log = logging.getLogger("ninjaalert.webhook")
 
 
 def format_alert_text(a, league: str) -> str:
-    """Human-readable one-liner for Telegram/discord-style sinks."""
+    """Human-readable one-liner for webhook/discord-style sinks."""
     pct = f"{a.pct:+.1f}%" if a.prev_price else ""
     bits = [f"{a.name} ({a.category.split(':', 2)[-1]})"]
     if pct:
@@ -52,10 +50,6 @@ class WebhookSender:
         """Enqueue one alert (payload must carry 'priority'). Non-blocking."""
         cfg = self._cfg_fn()
         if not cfg.webhook.enabled or not cfg.webhook.url:
-            return
-        if (cfg.webhook.format == "telegram"
-                and not str(cfg.webhook.chat_id).strip()):
-            log.debug("telegram webhook configured without chat id - skipping")  # graceful
             return
         if float(payload.get("priority", 0.0)) < float(cfg.webhook.min_priority):
             return
@@ -111,27 +105,14 @@ class WebhookSender:
         headers = {"Content-Type": "application/json",
                    "User-Agent": cfg.user_agent}
         timeout = min(max(cfg.network.timeout_s, 2.0), 15.0)
-        if cfg.webhook.format == "telegram":
-            url = cfg.webhook.url.strip()
-            if not url.lower().startswith(("http://", "https://")):
-                # bare bot token ("123456:ABC-...") -> construct the endpoint
-                url = f"https://api.telegram.org/bot{url}/sendMessage"
-            body: Dict[str, Any] = {
-                "chat_id": cfg.webhook.chat_id,
-                "text": payload.get("text") or str(payload),
-                "disable_web_page_preview": True,
-            }
-        else:
-            url = cfg.webhook.url
-            body = payload
         try:
-            resp = requests.post(url, data=json.dumps(body),
+            resp = requests.post(cfg.webhook.url, data=json.dumps(payload),
                                  headers=headers, timeout=timeout)
         except requests.RequestException as exc:
-            log.warning("webhook POST %s failed: %s", url, exc)
+            log.warning("webhook POST failed: %s", exc)
             return
         if resp.status_code >= 300:
-            log.warning("webhook POST %s -> HTTP %d", url, resp.status_code)
+            log.warning("webhook POST %s -> HTTP %d", cfg.webhook.url, resp.status_code)
         else:
             log.info("webhook delivered: %s", payload.get("name"))
 

@@ -288,7 +288,7 @@ def test_poller() -> None:
         worker.snapshot.connect(lambda q, m: got["snapshots"].append((q, m)))
         worker.leagues_found.connect(lambda g, ls: got["leagues"].append((g, ls)))
         worker.state_changed.connect(lambda s: got["states"].append(s))
-        worker.category_done.connect(lambda label, n: got["cats"].append((label, n)))
+        worker.category_done.connect(lambda g, label, n: got["cats"].append((g, label, n)))
         worker.start()
         QTimer.singleShot(1200, worker.stop)
         deadline = time.time() + 8
@@ -747,22 +747,18 @@ def test_features() -> None:
                   by_name["App icon asset"].detail)
             check("diag: log tail ok", by_name["Log tail"].ok)
         cfgd.webhook.enabled = True
-        cfgd.webhook.format = "telegram"
         cfgd.webhook.url = ""
-        bad = [r for r in run_checks(cfgd, td) if r.name == "Webhook / Telegram"]
-        check("diag: telegram without chat id flagged", bad and not bad[0].ok)
-        cfgd.webhook.url = "123456:ABC-token"
-        cfgd.webhook.chat_id = "42"
-        good = [r for r in run_checks(cfgd, td) if r.name == "Webhook / Telegram"]
-        check("diag: telegram token accepted", good and good[0].ok, good[0].detail)
+        bad = [r for r in run_checks(cfgd, td) if r.name == "Webhook"]
+        check("diag: webhook without url flagged", bad and not bad[0].ok)
+        cfgd.webhook.url = "https://example.test/hook"
+        good = [r for r in run_checks(cfgd, td) if r.name == "Webhook"]
+        check("diag: webhook endpoint accepted", good and good[0].ok, good[0].detail)
 
-        # ---- telegram payload (stubbed transport) ------------------------------
+        # ---- webhook (generic JSON; telegram removed in v2.2) ---------------
         import webhook as wh
         cfgt = Config()
         cfgt.webhook.enabled = True
-        cfgt.webhook.format = "telegram"
-        cfgt.webhook.url = "123456:ABC-token"
-        cfgt.webhook.chat_id = "42"
+        cfgt.webhook.url = "https://example.test/hook"
         sender = wh.WebhookSender(lambda: cfgt)
         captured: list = []
         real_post = wh.requests.post
@@ -773,21 +769,15 @@ def test_features() -> None:
         finally:
             wh.requests.post = real_post
             sender.stop()
-        check("telegram: bare token -> sendMessage URL",
-              captured and captured[0][0] ==
-              "https://api.telegram.org/bot123456:ABC-token/sendMessage", str(captured))
-        check("telegram: body carries chat_id + text",
-              captured and captured[0][1]["data"] and
-              '"chat_id": "42"' in captured[0][1]["data"].replace("'", '"'))
+        check("webhook: generic POST url + payload",
+              captured and captured[0][0] == "https://example.test/hook"
+              and '"priority"' in captured[0][1]["data"], str(captured)[:120])
         cfgt2 = Config()
-        cfgt2.webhook.enabled = True
-        cfgt2.webhook.format = "telegram"
-        cfgt2.webhook.url = "https://t/x"
-        cfgt2.webhook.chat_id = ""
+        cfgt2.webhook.enabled = True          # no url configured
         sender2 = wh.WebhookSender(lambda: cfgt2)
         try:
             sender2.notify({"text": "x", "priority": 1.0})
-            check("telegram: empty chat id skipped gracefully",
+            check("webhook: disabled/empty url skipped gracefully",
                   sender2._queue.qsize() == 0)
         finally:
             sender2.stop()
