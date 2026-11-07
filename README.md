@@ -57,6 +57,10 @@ gitignored and never committed; `config.example.json` documents the full schema.
 - **Status** — live snapshot (poller state, leagues, robust/basic items tracked, last
   event, **process RSS**) plus one-click **automated checks** (weights, SQLite WAL +
   index, journal, icon asset, log tail) and a live **poe.ninja probe**.
+- **History** — every alert that fired, rendered as read-only replicas of the push
+  toasts (icon, accent price line, meta) straight from `alerts.jsonl`: filter by
+  name/game/label, auto-refresh every 5 s, click a card to open the item on
+  poe.ninja — nothing is lost when a popup was missed.
 - **Auto sections** — once a day the app parses poe.ninja's economy index: brand-new
   categories are probed against the API, registered and auto-watched; watched sections that
   keep answering 404 are auto-cleared (with a tray notification).

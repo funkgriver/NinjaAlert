@@ -44,6 +44,7 @@ from appconfig import Config, ScenarioCfg, VALID_DIRECTIONS, VALID_METRICS, VALI
     app_dir
 from categories import CATEGORIES, labels_for
 from diagnostics import format_result, run_checks
+from ui_history import HistoryTab
 
 log = logging.getLogger("ninjaalert.settings")
 
@@ -463,6 +464,8 @@ class SettingsWindow(QWidget):
         self._tabs.addTab(page_mon, "Monitoring")
         self._tabs.addTab(self._build_scenarios_tab(), "Scenarios")
         self._tabs.addTab(self._build_status_tab(), "Status")
+        self._history = HistoryTab(lambda: self._cfg.alerts.price_display)
+        self._tabs.addTab(self._history, "History")
         root.addWidget(self._tabs, stretch=1)
 
         self._status_timer = QTimer(self)
@@ -625,6 +628,9 @@ class SettingsWindow(QWidget):
     def set_status_provider(self, fn: Optional[Callable[[], dict]]) -> None:
         self._status_provider = fn
 
+    def set_history_source(self, fn: Callable[..., list]) -> None:
+        self._history.set_provider(fn)
+
     def _refresh_status(self) -> None:
         if self._status_provider is None:
             return
@@ -683,10 +689,12 @@ class SettingsWindow(QWidget):
     def showEvent(self, event) -> None:
         self._status_timer.start()
         self._refresh_status()
+        self._history.activate()
         super().showEvent(event)
 
     def hideEvent(self, event) -> None:
         self._status_timer.stop()
+        self._history.deactivate()
         super().hideEvent(event)
 
     # ------------------------------------------------------------- internals

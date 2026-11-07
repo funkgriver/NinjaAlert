@@ -791,6 +791,20 @@ def test_features() -> None:
                   sender2._queue.qsize() == 0)
         finally:
             sender2.stop()
+
+        # ---- alert journal history read ----
+        from webhook import AlertJournal
+        with tempfile.TemporaryDirectory() as tdj:
+            j = AlertJournal(str(Path(tdj) / "alerts.jsonl"))
+            for i in range(5):
+                j.append({"name": f"item{i}", "ts": 1000.0 + i, "label": "SUSPECT"})
+            tail = j.read_recent(3)
+            check("history: journal tail oldest->newest",
+                  [r["name"] for r in tail] == ["item2", "item3", "item4"], str(tail))
+            j.append("garbage-line-torn")     # written as a JSON string, not a dict
+            check("history: non-dict lines tolerated", len(j.read_recent(10)) == 5)
+            check("history: missing journal -> empty",
+                  AlertJournal(str(Path(tdj) / "none.jsonl")).read_recent() == [])
     except Exception:
         import traceback
         check("features: suite ran", False, traceback.format_exc(limit=4))
@@ -841,7 +855,7 @@ def test_qt() -> None:
         check("qt: close-to-tray keeps window alive", settings.isHidden())
 
         # tabs + scenarios draft + live status provider
-        check("qt: three tabs present", settings._tabs.count() == 3,
+        check("qt: four tabs present", settings._tabs.count() == 4,
               str(settings._tabs.count()))
         from appconfig import ScenarioCfg
         settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
@@ -857,6 +871,28 @@ def test_qt() -> None:
         check("qt: status tab renders provider snapshot",
               "7 robust + 21 basic" in settings._live_labels["poe1"].text(),
               settings._live_labels["poe1"].text())
+
+        # History tab: provider -> cards, filters
+        rec = {"key": "poe1:x:Currency:div", "name": "Divine Orb", "game": "poe1",
+               "league": "Allflame", "category": "Currency", "price": 148.0,
+               "prev_price": 100.0, "pct": 48.0, "direction": 1, "label": "SUSPECT",
+               "phase": "Stabilization", "z_adj": 4.2, "rvol": 3.1, "ts": time.time(),
+               "priority": 2.5, "icon": None, "source": "exchange",
+               "details_id": "divine"}
+        settings.set_history_source(lambda limit=200: [rec])
+        settings._history.refresh(force=True)
+        check("qt: history card rendered", settings._history._list.count() == 1,
+              str(settings._history._list.count()))
+        settings._history._search.setText("mirror-of-kalandra")
+        settings._history._rebuild()
+        check("qt: history filter yields empty state",
+              settings._history._list.count() == 1
+              and settings._history._list.item(0).text().startswith("no alerts"),
+              settings._history._list.item(0).text() if settings._history._list.count() else "?")
+        settings._history._search.setText("divine")
+        settings._history._rebuild()
+        check("qt: history search matches name", settings._history._list.count() == 1)
+        settings._history.deactivate()
         settings.hide()
 
         # icon cache LRU cap (bounded pixmap memory)

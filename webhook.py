@@ -15,6 +15,7 @@ import logging
 import queue
 import threading
 import time
+from collections import deque
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
@@ -150,3 +151,22 @@ class AlertJournal:
                     f.write(line + "\n")
         except Exception:
             log.debug("alert journal append failed", exc_info=True)
+
+    def read_recent(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Last `limit` records (oldest -> newest) for the History tab.
+        Tolerant of truncated/foreign lines; the app may be appending while
+        this runs — reading a concurrently appended file is safe."""
+        try:
+            with open(self._path, "r", encoding="utf-8", errors="replace") as f:
+                lines: "deque[str]" = deque(f, maxlen=max(1, int(limit)))
+        except OSError:
+            return []
+        out: List[Dict[str, Any]] = []
+        for line in lines:
+            try:
+                rec = json.loads(line)
+                if isinstance(rec, dict):
+                    out.append(rec)
+            except json.JSONDecodeError:
+                continue                   # torn tail line, skip
+        return out

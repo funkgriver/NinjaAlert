@@ -290,6 +290,7 @@ class NinjaAlertController(QObject):
             self._settings = SettingsWindow(self._cfg)
             self._settings.setWindowIcon(load_app_icon())
             self._settings.set_status_provider(self._status_snapshot)
+            self._settings.set_history_source(self._history_snapshot)
             self._settings.settings_saved.connect(self._on_settings_saved)
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)
@@ -300,6 +301,20 @@ class NinjaAlertController(QObject):
         self._settings.activateWindow()
 
     _settings: Optional[SettingsWindow] = None
+
+    def _history_snapshot(self, limit: int = 200) -> list:
+        """Alert history for the History tab: journal tail, icons enriched for
+        records saved before the journal carried icon urls."""
+        try:
+            recs = self._journal.read_recent(limit)
+        except Exception:
+            log.exception("history read failed")
+            return []
+        for r in recs:
+            key = r.get("key")
+            if not r.get("icon") and key and key in self._icon_map:
+                r["icon"] = self._icon_map[key]
+        return recs
 
     def _status_snapshot(self) -> dict:
         """Thread-safe snapshot for the Status & Diagnostics tab."""
@@ -481,6 +496,9 @@ class NinjaAlertController(QObject):
             "supply_ratio": a.supply_ratio, "label": a.label, "manip": round(a.manip, 3),
             "priority": round(a.priority, 3), "phase": a.phase,
             "league_day": round(a.league_day, 1), "ts": a.ts,
+            # History-tab fields: identity + navigation (additive for webhooks)
+            "key": a.key, "icon": self._icon_map.get(a.key),
+            "details_id": ident, "source": overlay_alert.source,
             "text": format_alert_text(a, meta.league),
         }
         self._journal.append(payload)
