@@ -329,6 +329,12 @@ class SettingsWindow(QWidget):
         # ---- categories ----------------------------------------------------
         box_watch = QGroupBox("Watched categories")
         v = QVBoxLayout(box_watch)
+        self._cat_search = QLineEdit()
+        self._cat_search.setClearButtonEnabled(True)
+        self._cat_search.setPlaceholderText(
+            "Filter…  e.g. 'frag' → Fragments · 's' → Fragments, Cards, Belts")
+        self._cat_search.textChanged.connect(self._filter_categories)
+        v.addWidget(self._cat_search)
         self._cat_list = QListWidget()
         self._cat_list.setMinimumHeight(150)
         self._cat_list.itemChanged.connect(self._on_item_changed)
@@ -399,6 +405,12 @@ class SettingsWindow(QWidget):
         self._max_popups_spin = QSpinBox()
         self._max_popups_spin.setRange(1, 12)
         form_a.addRow("Max popups", self._max_popups_spin)
+        self._price_display_combo = QComboBox()
+        self._price_display_combo.addItem("Primary (chaos PoE1 / divine PoE2)", "primary")
+        self._price_display_combo.addItem("Secondary (divine PoE1 / exalted PoE2)", "secondary")
+        self._price_display_combo.addItem("Both + conversion hint", "both")
+        self._price_display_combo.setToolTip("How alert popups render prices")
+        form_a.addRow("Price display", self._price_display_combo)
         form_mon.addWidget(box_alerts)
 
         # ---- webhook automation ------------------------------------------------
@@ -705,6 +717,8 @@ class SettingsWindow(QWidget):
         self._max_popups_spin.setValue(int(c.alerts.max_popups))
         self._scen_draft = [dc_replace(s) for s in c.scenarios]
         self._reload_scenarios()
+        idx_pd = self._price_display_combo.findData(c.alerts.price_display)
+        self._price_display_combo.setCurrentIndex(max(idx_pd, 0))
 
     def _load_game_fields(self, game: str) -> None:
         c = self._cfg
@@ -771,6 +785,18 @@ class SettingsWindow(QWidget):
                 item.setToolTip(f"{cat.label} — listed items (stash API)")
             self._cat_list.addItem(item)
         self._cat_list.blockSignals(False)
+        self._filter_categories(self._cat_search.text())
+
+    def _filter_categories(self, text: str) -> None:
+        """Live type-to-filter on the category list: case-insensitive substring
+        on the label or the API id ('frag' → Fragments, 's' → FragmentS,
+        CardS, BeltS…). Hidden items keep their check state and are still
+        collected on save."""
+        needle = (text or "").strip().lower()
+        for i in range(self._cat_list.count()):
+            item = self._cat_list.item(i)
+            haystack = f"{item.text()} {item.data(Qt.ItemDataRole.UserRole)}".lower()
+            item.setHidden(bool(needle) and needle not in haystack)
 
     def _remember_checks(self, game: str) -> None:
         state_map: Dict[str, bool] = {}
@@ -806,6 +832,7 @@ class SettingsWindow(QWidget):
         c.alerts.sound = self._sound_check.isChecked()
         c.alerts.popup_seconds = float(self._popup_spin.value())
         c.alerts.max_popups = int(self._max_popups_spin.value())
+        c.alerts.price_display = self._price_display_combo.currentData() or "both"
         c.webhook.enabled = self._webhook_check.isChecked()
         c.webhook.url = self._webhook_url.text().strip()
         c.webhook.format = self._webhook_format.currentData() or "generic"

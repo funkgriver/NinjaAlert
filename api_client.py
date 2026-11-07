@@ -109,16 +109,33 @@ def format_number(v: float) -> str:
     return f"{v:.4f}".rstrip("0").rstrip(".") or "0"
 
 
-def format_price(price: float, meta: FetchMeta) -> str:
-    """'18.4c  ≈ 1.2 div' style rendering using the fetch context."""
+def format_price(price: float, meta: FetchMeta, display: str = "both") -> str:
+    """Price rendering using the fetch context.
+
+    display: "primary"  - chaos (poe1) / divine (poe2) only
+             "secondary" - divine (poe1) / exalted (poe2) only, when the
+                          fetch carried a conversion rate (primary fallback)
+             "both"      - primary with a "≈ secondary" hint (legacy default)
+    """
     from categories import PRIMARY_UNIT_LABEL
 
     unit = PRIMARY_UNIT_LABEL.get(meta.primary, meta.primary)
+    sec_rate: Optional[float] = None
+    sec_unit = ""
+    if meta.game == "poe1" and meta.rates.get("divine"):
+        sec_rate, sec_unit = float(meta.rates["divine"]), "div"
+    elif meta.game == "poe2" and meta.rates.get("exalted"):
+        sec_rate, sec_unit = float(meta.rates["exalted"]), "ex"
+
+    if display == "secondary" and sec_rate:
+        return f"{format_number(price * sec_rate)}{sec_unit}"
+
     text = f"{format_number(price)}{unit}"
-    if meta.game == "poe1" and price >= 20 and meta.rates.get("divine"):
-        text += f"  ≈ {format_number(price * meta.rates['divine'])} div"
-    elif meta.game == "poe2" and price < 0.5 and meta.rates.get("exalted"):
-        text += f"  ≈ {format_number(price * meta.rates['exalted'])} ex"
+    if display in ("both", "secondary") and sec_rate:
+        if meta.game == "poe1" and price >= 20:
+            text += f"  ≈ {format_number(price * sec_rate)} {sec_unit}"
+        elif meta.game == "poe2" and price < 0.5:
+            text += f"  ≈ {format_number(price * sec_rate)} {sec_unit}"
     return text
 
 

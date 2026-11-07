@@ -149,11 +149,13 @@ class NotificationOverlay(QWidget):
         site_url: Optional[str],
         price_text: Optional[str] = None,
         meta_text: Optional[str] = None,
+        price_display: str = "both",
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
         self._price_override = price_text
         self._meta_override = meta_text
+        self._price_display = price_display
         self._alert = alert
         self._site_url = site_url
         self._drag_offset: Optional[QPoint] = None
@@ -286,8 +288,8 @@ class NotificationOverlay(QWidget):
             pct_text = f"{alert.pct:+.1f}%" if alert.old_price != alert.new_price else ""
             arrow = " → " if pct_text else ""
             self._price_label.setText(
-                f"{format_price(alert.old_price, meta)}{arrow}"
-                f"{format_price(alert.new_price, meta)}   {pct_text}"
+                f"{format_price(alert.old_price, meta, self._price_display)}{arrow}"
+                f"{format_price(alert.new_price, meta, self._price_display)}   {pct_text}"
             )
 
         if self._meta_override is not None:
@@ -425,6 +427,7 @@ class ToastManager(QObject):
             popup_seconds=float(cfg.alerts.popup_seconds),
             icon_loader=self._icons,
             site_url=self._site_url_for(alert, meta),
+            price_display=getattr(cfg.alerts, "price_display", "both"),
         )
         overlay.closed.connect(self._on_closed)
         self._active.append(overlay)
@@ -458,6 +461,7 @@ class ToastManager(QObject):
                 icon_loader=self._icons, site_url=None,
                 price_text=cats or "alert budget reached",
                 meta_text=f"{names} — folded to keep the feed clean",
+                price_display=getattr(cfg.alerts, "price_display", "both"),
             )
             overlay.closed.connect(self._on_closed)
             self._active.append(overlay)

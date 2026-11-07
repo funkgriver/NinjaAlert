@@ -221,9 +221,35 @@ def test_parsers() -> None:
     check("format: poe2 divine", format_price(1.0, m2).startswith("1div"), format_price(1.0, m2))
     check("format: poe2 ex hint", "ex" in format_price(0.01, m2), format_price(0.01, m2))
 
+    # price display modes (chaos / divine / both)
+    check("price: primary only", format_price(500.0, m1, "primary") == "500c",
+          format_price(500.0, m1, "primary"))
+    check("price: secondary converts chaos->div",
+          format_price(500.0, m1, "secondary").endswith("div"),
+          format_price(500.0, m1, "secondary"))
+    check("price: both keeps legacy hint",
+          "≈" in format_price(500.0, m1, "both")
+          and "div" in format_price(500.0, m1, "both"))
+    check("price: secondary without rate falls back",
+          format_price(5.0, FetchMeta(game="poe1", league="L", category="Currency",
+                                      source="exchange", primary="chaos"),
+                       "secondary").endswith("c"))
+    check("price: poe2 secondary uses exalted",
+          format_price(1.0, m2, "secondary").endswith("ex"),
+          format_price(1.0, m2, "secondary"))
+
+    from appconfig import VALID_PRICE_DISPLAY, Config
+    cfgpd = Config()
+    cfgpd.alerts.price_display = "bogus"
+    cfgpd._sanitize()
+    check("price: bad display sanitized to both",
+          cfgpd.alerts.price_display == "both"
+          and cfgpd.alerts.price_display in VALID_PRICE_DISPLAY)
+
     from ui_overlay import _league_slug
     check("slug: Allflame", _league_slug("Allflame") == "allflame")
     check("slug: HC league", _league_slug("HC Forbidden Rites") == "forbiddenriteshc")
+
 
 
 # ------------------------------------------------------------------- poller
@@ -841,6 +867,23 @@ def test_qt() -> None:
               and "url0" not in loader._cache
               and f"url{ICON_CACHE_MAX + 49}" in loader._cache,
               str(len(loader._cache)))
+
+        # category type-to-filter (Monitoring tab)
+        settings._cat_search.setText("frag")
+        visible = [i for i in range(settings._cat_list.count())
+                   if not settings._cat_list.item(i).isHidden()]
+        check("qt: category filter 'frag'",
+              len(visible) == 1
+              and settings._cat_list.item(visible[0]).text() == "Fragments",
+              str(len(visible)))
+        settings._cat_search.setText("s")
+        visible_s = sum(1 for i in range(settings._cat_list.count())
+                        if not settings._cat_list.item(i).isHidden())
+        check("qt: category filter 's' matches many", visible_s > 10, str(visible_s))
+        settings._cat_search.setText("")
+        check("qt: empty filter restores all",
+              all(not settings._cat_list.item(i).isHidden()
+                  for i in range(settings._cat_list.count())))
 
         QTimer.singleShot(400, app.quit)
         app.exec()

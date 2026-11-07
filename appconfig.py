@@ -30,6 +30,7 @@ VALID_GAMES = ("poe1", "poe2")
 VALID_CORNERS = ("bottom-right", "bottom-left", "top-right", "top-left")
 VALID_ENGINES = ("auto", "basic")
 VALID_WEBHOOK_FORMATS = ("generic", "telegram")
+VALID_PRICE_DISPLAY = ("primary", "secondary", "both")
 
 
 def app_dir() -> str:
@@ -140,6 +141,9 @@ class Alerts:
     sound: bool = True
     popup_seconds: float = 15.0
     max_popups: int = 5
+    # price rendering in popups: primary (chaos PoE1 / divine PoE2),
+    # secondary (divine PoE1 / exalted PoE2) or both with a conversion hint
+    price_display: str = "both"
     # ---- alert budget (spec section 5) --------------------------------------
     bucket_capacity: int = 5              # tokens
     refill_seconds: float = 120.0         # 1 token per 2 minutes
@@ -406,6 +410,8 @@ class Config:
         self.thresholds.cooldown_minutes = min(max(self.thresholds.cooldown_minutes, 5.0), 1440.0)
         self.thresholds.jump_pct = min(max(self.thresholds.jump_pct, 1.0), 2000.0)
         self.alerts.popup_seconds = min(max(self.alerts.popup_seconds, 5.0), 300.0)
+        if self.alerts.price_display not in VALID_PRICE_DISPLAY:
+            self.alerts.price_display = "both"
         self.alerts.max_popups = min(max(self.alerts.max_popups, 1), 12)
         self.alerts.bucket_capacity = max(1, int(self.alerts.bucket_capacity))
         self.alerts.refill_seconds = max(10.0, float(self.alerts.refill_seconds))
