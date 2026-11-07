@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -97,6 +98,31 @@ QPushButton#gameButton:checked { background: #2f6d4f; border-color: #41d98c; col
 QPushButton#primaryButton { background: #2f6d4f; border-color: #41d98c; font-weight: 600; }
 QCheckBox::indicator { width: 15px; height: 15px; }
 """
+
+
+# Ready-made scenario templates (Scenarios tab -> Presets...), sane for PoE
+# market quirks: spikes are usually UP, dumps are rarer but real, volume
+# bursts often precede price moves, |z| filters out tiny league-start noise.
+SCENARIO_PRESETS = (
+    ("Divine moves — poe1 Currency ≥10% up",
+     dict(name="Divine moves", game="poe1", category="Currency",
+          metric="pct", op=">=", value=10.0, direction="up", cooldown_minutes=60.0)),
+    ("Dump watch — any ≤-15% down",
+     dict(name="Dump watch", game="poe1", metric="pct", op="<=", value=-15.0,
+          direction="down", cooldown_minutes=60.0)),
+    ("Volume burst — RVOL ×5+",
+     dict(name="Volume burst", game="poe1", metric="rvol", op=">=", value=5.0,
+          cooldown_minutes=90.0)),
+    ("High-conviction — |z| ≥4.5",
+     dict(name="High-conviction z", game="poe1", metric="z_abs", op=">=",
+          value=4.5, cooldown_minutes=120.0)),
+    ("Top priority — ≥3",
+     dict(name="Top priority", game="poe1", metric="priority", op=">=",
+          value=3.0, cooldown_minutes=45.0)),
+    ("Whale gear — poe1 uniques ≥15% up",
+     dict(name="Whale gear", game="poe1", category="UniqueWeapon",
+          metric="pct", op=">=", value=15.0, direction="up", cooldown_minutes=60.0)),
+)
 
 
 def _status_dot_pixmap(color: str, d: int = 10) -> QPixmap:
@@ -530,7 +556,13 @@ class SettingsWindow(QWidget):
         btn_edit.clicked.connect(self._scenario_edit)
         btn_del = QPushButton("Remove")
         btn_del.clicked.connect(self._scenario_remove)
-        for b in (btn_add, btn_edit, btn_del):
+        btn_presets = QPushButton("Presets…")
+        btn_presets.setToolTip("Ready-made scenario templates")
+        presets_menu = QMenu(btn_presets)
+        for label, kwargs in SCENARIO_PRESETS:
+            presets_menu.addAction(label, lambda kw=kwargs: self._add_preset(kw))
+        btn_presets.setMenu(presets_menu)
+        for b in (btn_add, btn_edit, btn_del, btn_presets):
             row.addWidget(b)
         row.addStretch(1)
         v.addLayout(row)
@@ -538,6 +570,10 @@ class SettingsWindow(QWidget):
         note.setStyleSheet("color: #6b7280;")
         v.addWidget(note)
         return page
+
+    def _add_preset(self, kwargs: dict) -> None:
+        self._scen_draft.append(ScenarioCfg(**kwargs))
+        self._reload_scenarios()
 
     @staticmethod
     def _scenario_summary(sc: ScenarioCfg) -> str:

@@ -419,6 +419,12 @@ class NinjaAlertController(QObject):
                 annotated = dc_replace(hit.anomaly,
                                        label=f"SCENARIO·{hit.scenario}")
                 self._dispatch_alert(annotated, meta)
+            if shown and float(self._cfg.alerts.confirm_rescan_seconds) > 0:
+                # confirmation re-scan: wake this game's poller shortly to
+                # re-check the move (one early cycle, core logic untouched)
+                worker = self._pollers.get(result["game"])
+                if worker is not None:
+                    worker.wake_soon(float(self._cfg.alerts.confirm_rescan_seconds))
             if result["digest"] is not None:
                 self._toasts.show_digest(result["digest"], result["game"], meta.league)
         except Exception:

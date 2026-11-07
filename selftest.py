@@ -805,6 +805,54 @@ def test_features() -> None:
             check("history: non-dict lines tolerated", len(j.read_recent(10)) == 5)
             check("history: missing journal -> empty",
                   AlertJournal(str(Path(tdj) / "none.jsonl")).read_recent() == [])
+        # ---- statuses, sections/league, presets, journal sync ---------------
+        from ui_overlay import friendly_status
+        check("ux: friendly statuses",
+              friendly_status("SUSPECT").startswith("⚠")
+              and friendly_status("SCENARIO·x").startswith("🎯")
+              and friendly_status("ORGANIC").startswith("✅")
+              and friendly_status("AMBIGUOUS").startswith("🤔"))
+
+        from poller import PollWorker
+        wp = PollWorker(type("Stub", (), {})(), Config(), "poe1")
+        wp._cfg.game_cfg("poe1").watch = ["Currency"]
+        wp._unavail_strikes["Currency"] = 6
+        cleared = []
+        wp.section_cleared.connect(lambda g, c: cleared.append((g, c)))
+        wp._maybe_autoclear()
+        check("sections: 6x404 auto-clears watched section",
+              cleared == [("poe1", "Currency")], str(cleared))
+        wp.wake_soon(120.0)
+        check("sections: wake_soon schedules early re-poll",
+              wp._wake_at is not None and 60.0 < wp._wake_at - time.time() <= 121.0)
+
+        cfgcs = Config()
+        check("sections: register custom section",
+              cfgcs.register_custom_section("poe1", "ProbeCat", "item", "Probe Cat")
+              and "ProbeCat" in cfgcs.game_cfg("poe1").watch
+              and "ProbeCat" in __import__("categories").CATEGORIES["poe1"])
+        cfgcs.unregister_custom_section("poe1", "ProbeCat")
+        check("sections: unregister removes from watch",
+              "ProbeCat" not in cfgcs.game_cfg("poe1").watch)
+
+        from ui_settings import SCENARIO_PRESETS
+        cfgsc = Config()
+        cfgsc.scenarios = [dict(SCENARIO_PRESETS[0][1]), dict(SCENARIO_PRESETS[2][1])]
+        cfgsc._sanitize()
+        check("sections: presets sanitize cleanly",
+              [s.name for s in cfgsc.scenarios] == ["Divine moves", "Volume burst"],
+              str([s.name for s in cfgsc.scenarios]))
+
+        with tempfile.TemporaryDirectory() as tds:
+            js = AlertJournal(str(Path(tds) / "alerts.jsonl"))
+            js.append({"name": "X", "ts": 1.0, "key": "poe1:x:Currency:div",
+                       "icon": None, "source": "exchange", "details_id": "div",
+                       "label": "SUSPECT"})
+            rec = js.read_recent(1)[0]
+            check("sync: push payload fields land in journal history",
+                  rec.get("key") == "poe1:x:Currency:div"
+                  and "source" in rec and "details_id" in rec, str(rec))
+
     except Exception:
         import traceback
         check("features: suite ran", False, traceback.format_exc(limit=4))

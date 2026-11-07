@@ -64,6 +64,7 @@ class PollWorker(QThread):
         self._unavail_strikes: dict = {}         # cat_id -> consecutive 404 cycles
         self._auto_cleared: set = set()          # reported for removal, don't re-emit
         self._last_discovery = 0.0
+        self._wake_at: Optional[float] = None    # one early re-poll deadline
         self._last_current_league: str = ""
 
     # --------------------------------------------------- control (GUI thread)
@@ -82,6 +83,12 @@ class PollWorker(QThread):
 
     def check_now(self) -> None:
         self._wake.set()
+
+    def wake_soon(self, delay_s: float = 120.0) -> None:
+        """One early re-poll (e.g. right after an alert fired): the next sleep
+        ends at `delay_s` instead of the full interval, to confirm the move.
+        Core logic unchanged — it is just a shorter wait for the next cycle."""
+        self._wake_at = time.time() + max(30.0, float(delay_s))
 
     def stop(self) -> None:
         self._stop_flag = True
@@ -117,6 +124,7 @@ class PollWorker(QThread):
     def _run_cycle(self) -> None:
         cfg = self.current_config
         gc = cfg.game_cfg(self.game)
+        self._wake_at = None                   # one-shot re-poll consumed
 
         if not gc.enabled:
             self.state_changed.emit("disabled")
@@ -272,6 +280,8 @@ class PollWorker(QThread):
     # ------------------------------------------------------------ sleeping
     def _sleep_interval(self, extra_seconds: float = 0.0) -> None:
         interval = max(self.current_config.game_cfg(self.game).poll_interval_minutes, 1.0) * 60.0
+        if self._wake_at is not None:          # confirmation re-scan: wake early
+            interval = min(interval, max(30.0, self._wake_at - time.time()))
         self._sleep_until_wake(poll_seconds=interval + extra_seconds)
 
     def _sleep_until_wake(self, poll_seconds: float) -> None:

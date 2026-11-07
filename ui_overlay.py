@@ -48,6 +48,20 @@ ACCENT_UP = "#41d98c"     # price spike
 ACCENT_VOL = "#e8b93e"    # listing-volume surge
 ACCENT_MUTE = "#9aa4b2"
 
+FRIENDLY_STATUS = {
+    "SUSPECT": "⚠ Manipulation likely",
+    "AMBIGUOUS": "🤔 Worth a look",
+    "ORGANIC": "✅ Organic move",
+}
+
+
+def friendly_status(label: str) -> str:
+    """Human-readable 'should I care?' verdict for an alert label."""
+    label = str(label or "")
+    if label.startswith("SCENARIO"):
+        return "🎯 Your scenario"
+    return FRIENDLY_STATUS.get(label, label)
+
 try:
     import winsound  # noqa: WPS433 (Windows only)
 except ImportError:  # non-Windows dev/test machines
@@ -87,6 +101,26 @@ def _beep_two_tone() -> None:
 ICON_CACHE_MAX = 512          # LRU cap: alerted-item icons must not accumulate
 
 
+def _icon_url_fallback(url: str) -> Optional[str]:
+    """poe.ninja's /gen/image/<base64>/... URLs 404 from plain clients; the
+    base64 payload carries the GGG art path, so build the classic
+    web.poecdn.com/image/Art/<path>.png URL from it (verified 2026-11)."""
+    if "/gen/image/" not in url:
+        return None
+    try:
+        b64 = url.split("/gen/image/", 1)[1].split("/", 1)[0]
+        import base64 as _b64
+        data = _b64.b64decode(b64 + "=" * (-len(b64) % 4))
+        import json as _json
+        payload = _json.loads(data.decode("utf-8"))
+        art = payload[-1].get("f") if isinstance(payload, list) else None
+        if art:
+            return f"https://web.poecdn.com/image/Art/{art}.png"
+    except Exception:
+        return None
+    return None
+
+
 class IconLoader(QObject):
     """Async icon downloader with a bounded in-memory cache (no disk writes)."""
 
@@ -104,9 +138,15 @@ class IconLoader(QObject):
         self._pending.setdefault(url, []).append(callback)
         if len(self._pending.get(url, [])) > 1:
             return  # download already in flight
-        req = QNetworkRequest(QUrl(url))
-        req.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
-                         QNetworkRequest.RedirectPolicy.NoLessSafeRedirects)
+        # API gen/image URLs 404 -> try the decoded poecdn art path first,
+        # then the original URL as a fallback (either may start working)
+        req_url = _icon_url_fallback(url) or url
+        req = QNetworkRequest(QUrl(req_url))
+        try:    # cosmetic nicety - a Qt enum drift must never kill dispatch
+            req.setAttribute(QNetworkRequest.Attribute.RedirectPolicyAttribute,
+                             QNetworkRequest.RedirectPolicy.NoLessSafeRedirectPolicy)
+        except Exception:
+            log.debug("redirect policy attribute not supported")
         reply = self._nam.get(req)
         reply.finished.connect(lambda: self._on_finished(url, reply))
 
@@ -202,7 +242,10 @@ class NotificationOverlay(QWidget):
         self._icon_label.setText("◈")
         self._icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         if alert.icon:
-            icon_loader.get(alert.icon, self._set_icon)
+            try:
+                icon_loader.get(alert.icon, self._set_icon)
+            except Exception:      # icons are cosmetic, alerts are not
+                log.exception("icon fetch setup failed for %s", alert.icon)
         content.addWidget(self._icon_label)
 
         mid = QVBoxLayout()
@@ -298,7 +341,7 @@ class NotificationOverlay(QWidget):
 
         parts: List[str] = [get_cat(alert.game, alert.category).label]
         if getattr(alert, "label", ""):
-            parts.append(str(alert.label))
+            parts.append(friendly_status(getattr(alert, "label", "")))
         if getattr(alert, "phase", ""):
             parts.append(str(alert.phase))
         if getattr(alert, "z_adj", 0.0):

@@ -61,6 +61,16 @@ gitignored and never committed; `config.example.json` documents the full schema.
   toasts (icon, accent price line, meta) straight from `alerts.jsonl`: filter by
   name/game/label, auto-refresh every 5 s, click a card to open the item on
   poe.ninja — nothing is lost when a popup was missed.
+- **Readable verdicts** — labels are translated to human statuses everywhere:
+  `SUSPECT` → ⚠ Manipulation likely, `AMBIGUOUS` → 🤔 Worth a look,
+  `ORGANIC` → ✅ Organic move, scenarios → 🎯 Your scenario.
+- **Confirmation re-scan** — after an alert fires, that game is re-polled once
+  after `alerts.confirm_rescan_seconds` (120 s default, 0 = off) to confirm the
+  move; the polling interval itself is untouched.
+- **Scenario presets** — Scenarios tab → *Presets…*: ready rules (Divine moves
+  ≥10% up, Dump watch ≤-15%, Volume burst RVOL ×5, |z| ≥4.5, priority ≥3, whale
+  uniques ≥15%). Item icons load from poe.ninja's CDN (art path auto-recovered
+  from the API's image URLs).
 - **Auto sections** — once a day the app parses poe.ninja's economy index: brand-new
   categories are probed against the API, registered and auto-watched; watched sections that
   keep answering 404 are auto-cleared (with a tray notification).

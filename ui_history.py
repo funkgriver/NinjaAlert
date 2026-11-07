@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 
 from api_client import BASE_URL, FetchMeta, format_price
 from categories import get_cat
-from ui_overlay import IconLoader, TOAST_HEIGHT, _league_slug
+from ui_overlay import IconLoader, TOAST_HEIGHT, _league_slug, friendly_status
 
 log = logging.getLogger("ninjaalert.history")
 
@@ -44,6 +44,7 @@ ACCENT_FLAT = "#e8b93e"
 CARD_QSS = """
 #histCard { background: rgba(17, 20, 28, 243); border: 1px solid rgba(255, 255, 255, 28);
             border-radius: 10px; }
+#histCard:hover { border: 1px solid rgba(65, 217, 140, 140); }
 #histCard QLabel { background: transparent; border: none; }
 #histIcon { background: rgba(255,255,255,14); border-radius: 6px; color: #9aa4b2; }
 #histTitle { color: #f2f4f8; font-size: 12px; font-weight: 700; }
@@ -77,11 +78,15 @@ def build_site_url(rec: Dict[str, Any]) -> Optional[str]:
 
 
 def _fmt_time(ts: float) -> str:
-    lt = time.localtime(ts)
-    now = time.localtime()
-    if (lt.tm_year, lt.tm_yday) == (now.tm_year, now.tm_yday):
-        return time.strftime("%H:%M", lt)
-    return time.strftime("%d %b %H:%M", lt)
+    """Compact relative time ('5m ago', '2h ago'), absolute for older items."""
+    delta = time.time() - float(ts or 0.0)
+    if delta < 0:
+        delta = 0.0
+    if delta < 3600.0:
+        return f"{max(1, int(delta // 60))}m ago"
+    if delta < 86400.0:
+        return f"{int(delta // 3600)}h ago"
+    return time.strftime("%d %b %H:%M", time.localtime(ts))
 
 
 class AlertHistoryCard(QFrame):
@@ -186,7 +191,7 @@ class AlertHistoryCard(QFrame):
         if rec.get("category"):
             parts.append(str(rec["category"]).rsplit(":", 1)[-1])
         if rec.get("label"):
-            parts.append(str(rec["label"]))
+            parts.append(friendly_status(rec["label"]))
         if rec.get("phase"):
             parts.append(str(rec["phase"]))
         if rec.get("z_adj"):

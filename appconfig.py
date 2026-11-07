@@ -144,6 +144,8 @@ class Alerts:
     # price rendering in popups: primary (chaos PoE1 / divine PoE2),
     # secondary (divine PoE1 / exalted PoE2) or both with a conversion hint
     price_display: str = "both"
+    # one early re-poll after an alert fires, to confirm the move (0 = off)
+    confirm_rescan_seconds: float = 120.0
     # ---- alert budget (spec section 5) --------------------------------------
     bucket_capacity: int = 5              # tokens
     refill_seconds: float = 120.0         # 1 token per 2 minutes
@@ -412,6 +414,8 @@ class Config:
         self.alerts.popup_seconds = min(max(self.alerts.popup_seconds, 5.0), 300.0)
         if self.alerts.price_display not in VALID_PRICE_DISPLAY:
             self.alerts.price_display = "both"
+        self.alerts.confirm_rescan_seconds = min(
+            max(float(self.alerts.confirm_rescan_seconds), 0.0), 600.0)
         self.alerts.max_popups = min(max(self.alerts.max_popups, 1), 12)
         self.alerts.bucket_capacity = max(1, int(self.alerts.bucket_capacity))
         self.alerts.refill_seconds = max(10.0, float(self.alerts.refill_seconds))
