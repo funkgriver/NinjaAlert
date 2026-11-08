@@ -152,6 +152,8 @@ class AlertJournal:
     def __init__(self, path: str) -> None:
         self._path = path
         self._lock = threading.Lock()
+        self._appended = 0          # revision source: change detection for the History tab
+        self._rotations = 0
 
     def append(self, record: Dict[str, Any]) -> None:
         try:
@@ -159,8 +161,15 @@ class AlertJournal:
             with self._lock:
                 with open(self._path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
+                self._appended += 1
         except Exception:
             log.debug("alert journal append failed", exc_info=True)
+
+    def revision(self) -> int:
+        """Monotonic change counter (appends + rotations): lets the History
+        tab detect journal growth even when its window is full and every
+        visible record is unchanged (e.g. only confirm markers arrived)."""
+        return self._appended + self._rotations
 
     def rotate_if_large(self, max_bytes: int = JOURNAL_MAX_BYTES) -> bool:
         """Size cap: fold the journal into alerts.jsonl.old once it exceeds
@@ -180,6 +189,7 @@ class AlertJournal:
                 if not os.path.exists(self._path):
                     return False
                 os.replace(self._path, self._path + ".old")
+                self._rotations += 1
             log.info("journal rotated -> %s.old", os.path.basename(self._path))
             return True
         except OSError:
@@ -204,3 +214,35 @@ class AlertJournal:
             except json.JSONDecodeError:
                 continue                   # torn tail line, skip
         return out
+
+
+def attach_confirms(recs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Pair confirmation records with their alerts (C9 -> History tab).
+
+    Order-agnostic: the newest confirm per key attaches to the newest alert
+    record it references (rec["confirm"] = {held, share, price, ts}); confirm
+    markers themselves are dropped - they render as badges on the alert
+    cards, not as cards of their own.
+    """
+    confirms: Dict[str, Dict[str, Any]] = {}
+    for rec in recs:
+        if rec.get("type") != "confirm":
+            continue
+        key = str(rec.get("key") or "")
+        cur = confirms.get(key)
+        if cur is None or float(rec.get("ts") or 0.0) > float(cur.get("ts") or 0.0):
+            confirms[key] = rec
+    out: List[Dict[str, Any]] = []
+    for rec in recs:
+        if rec.get("type") == "confirm":
+            continue
+        conf = confirms.get(str(rec.get("key") or ""))
+        if (conf is not None
+                and float(conf.get("ref_ts") or 0.0) >= float(rec.get("ts") or 0.0)):
+            rec = dict(rec)
+            rec["confirm"] = {"held": bool(conf.get("held")),
+                              "share": conf.get("share"),
+                              "price": conf.get("price"),
+                              "ts": conf.get("ts")}
+        out.append(rec)
+    return out
