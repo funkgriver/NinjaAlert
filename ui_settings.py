@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSpinBox,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -238,6 +239,17 @@ class ScenarioDialog(QDialog):
             cooldown_minutes=float(self._cooldown.value()),
             enabled=self._enabled.isChecked(),
         )
+
+
+def _wrap_scroll(page: QWidget) -> QWidget:
+    """Dense tab pages live inside a scroll area: shrinking the window must
+    produce scrollbars, never a crushed layout (form rows drawn on top of
+    each other when Qt is squeezed below the page's minimum size)."""
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)
+    sa.setFrameShape(QScrollArea.Shape.NoFrame)
+    sa.setWidget(page)
+    return sa
 
 
 class SettingsWindow(QWidget):
@@ -484,9 +496,9 @@ class SettingsWindow(QWidget):
         form_mon.addWidget(link)
         form_mon.addStretch(1)
 
-        self._tabs.addTab(page_mon, "Monitoring")
-        self._tabs.addTab(self._build_scenarios_tab(), "Scenarios")
-        self._tabs.addTab(self._build_status_tab(), "Status")
+        self._tabs.addTab(_wrap_scroll(page_mon), "Monitoring")
+        self._tabs.addTab(_wrap_scroll(self._build_scenarios_tab()), "Scenarios")
+        self._tabs.addTab(_wrap_scroll(self._build_status_tab()), "Status")
         self._history = HistoryTab(lambda: self._cfg.alerts.price_display)
         self._tabs.addTab(self._history, "History")
         root.addWidget(self._tabs, stretch=1)
