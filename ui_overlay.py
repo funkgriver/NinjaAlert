@@ -80,19 +80,25 @@ except ImportError:  # non-Windows dev/test machines
 
 # --------------------------------------------------------------------- sound
 def play_alert_sound(enabled: bool, base_dir: str) -> None:
-    """Subtle two-tone cue. alert.wav (next to the exe) overrides the beep."""
+    """Alert cue: a custom alert.wav next to the exe wins, then the bundled
+    PoE hitmarker default (assets/alert.wav), then the two-tone beep."""
     if not enabled:
         return
-    wav = os.path.join(base_dir, "alert.wav")
-    if winsound is not None and os.path.isfile(wav):
-        try:
-            winsound.PlaySound(
-                wav,
-                winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT,
-            )
-            return
-        except Exception as exc:
-            log.warning("could not play alert.wav: %s", exc)
+    if winsound is not None:
+        from appconfig import resource_path
+        override = os.path.join(base_dir, "alert.wav")
+        for path in (override if os.path.isfile(override) else None,
+                     resource_path("assets/alert.wav")):
+            if not path:
+                continue
+            try:
+                winsound.PlaySound(
+                    path,
+                    winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT,
+                )
+                return
+            except Exception as exc:
+                log.warning("could not play %s: %s", path, exc)
     threading.Thread(target=_beep_two_tone, daemon=True).start()
 
 

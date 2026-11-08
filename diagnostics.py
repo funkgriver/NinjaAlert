@@ -60,6 +60,7 @@ def run_checks(cfg, base_dir: str, probe_api: bool = False,
 
     results.append(_journal_check(base_dir))
     results.append(_asset_check(base_dir))
+    results.append(_alert_sound_check())
     results.append(_log_check(base_dir))
     results.append(_webhook_check(cfg))
     if cfg.scenarios:
@@ -156,6 +157,15 @@ def _asset_check(base_dir: str) -> CheckResult:
         return CheckResult("App icon asset", True, f"{ico.name} bundled")
     return CheckResult("App icon asset", False,
                        "assets/app.ico missing (run tools/make_icon.py)")
+
+
+def _alert_sound_check() -> CheckResult:
+    from appconfig import resource_path
+    wav = Path(resource_path("assets/alert.wav"))
+    if wav.exists() and wav.stat().st_size > 0:
+        return CheckResult("Alert sound asset", True, f"{wav.name} bundled")
+    return CheckResult("Alert sound asset", False,
+                       "assets/alert.wav missing (rebuild with bundled assets)")
 
 
 def _log_check(base_dir: str) -> CheckResult:

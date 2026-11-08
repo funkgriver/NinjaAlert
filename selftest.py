@@ -1364,6 +1364,13 @@ def test_qt() -> None:
         check("qt: disabled game says off, not monitoring",
               settings._live_labels["poe2"].text().startswith("off"),
               settings._live_labels["poe2"].text())
+        # bundled default alert sound (PoE hitmarker) resolves via resource_path
+        import os as _os
+        from appconfig import resource_path as _rp
+        wavp = _rp("assets/alert.wav")
+        check("sound: hitmarker default bundled and reachable",
+              _os.path.isfile(wavp) and _os.path.getsize(wavp) > 40000,
+              f"{wavp} ({_os.path.getsize(wavp) if _os.path.exists(wavp) else 0} B)")
 
         # History tab: provider -> cards, filters
         rec = {"key": "poe1:x:Currency:div", "name": "Divine Orb", "game": "poe1",
