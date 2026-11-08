@@ -657,6 +657,14 @@ def test_advanced() -> None:
               m is not None and m.redelisted and ad._features(m, None)[2] == 1.0,
               f"redelisted={getattr(m, 'redelisted', None)}")
 
+        # ---- 7b. symmetric supply-pressure feature on drops (D13) ---------
+        m_drop_flood = metrics(0.9, 1.0, 1.5, 0.0, True, r=-0.1)   # listings flood, price falls
+        m_drop_vanish = metrics(0.9, 1.0, 0.5, 0.0, True, r=-0.1)  # listings vanish, price falls
+        f_flood = an._features(m_drop_flood, None)[2]
+        f_vanish = an._features(m_drop_vanish, None)[2]
+        check("D13: f3 fires on supply flooding a drop, not on vanishing supply",
+              f_flood == 1.0 and f_vanish == 0.0, f"flood={f_flood}, vanish={f_vanish}")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
