@@ -1450,7 +1450,8 @@ def test_qt() -> None:
         from ui_history import build_site_url
         from ui_overlay import DigestOverlay
         opened: list = []
-        QGuiApplication.openUrl = lambda url: opened.append(str(url))
+        from PyQt6.QtGui import QDesktopServices as _QDS
+        _QDS.openUrl = lambda url: opened.append(str(url))
         jrec = {"key": "poe1:i:UniqueArmour:lich:", "name": "Lich's Circle",
                 "game": "poe1", "league": "Allflame",
                 "category": "poe1:item:UniqueArmour", "price": 19.5,
@@ -1483,6 +1484,37 @@ def test_qt() -> None:
         card2.deleteLater()
         dovl2.deleteLater()
         lst.deleteLater()
+
+        # the real openUrl must exist and must not raise (Qt6 moved it to
+        # QDesktopServices - QGuiApplication.openUrl is gone and clicks were
+        # silently dying on AttributeError)
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+        opened.clear()
+        try:
+            QDesktopServices.openUrl(QUrl("https://poe.ninja/poe1/economy"))
+            check("click: QDesktopServices.openUrl usable", True)
+        except Exception as exc:
+            check("click: QDesktopServices.openUrl usable", False, str(exc))
+        for f in ("ui_history.py", "ui_overlay.py"):
+            src = open(os.path.join(ROOT, f), encoding="utf-8").read()
+            check(f"click: {f} no longer calls the removed API",
+                  "QDesktopServices.openUrl(" in src
+                  and "QGuiApplication.openUrl(" not in src)
+        # expanded stacks stay on screen (bottom corner clamps at the top edge)
+        geo = QGuiApplication.primaryScreen().availableGeometry()
+        d3 = Digest(dgt.count, dgt.names, dgt.categories, dgt.items)
+        mgr.show_digest(d3, "poe1", "Allflame")
+        mgr.show_digest(d3, "poe1", "Allflame")
+        big = mgr._active[-2]
+        big.toggle()
+        app.processEvents()
+        ys = [o.geometry().top() for o in mgr._active]
+        check("click: expanded stack clamps inside the screen",
+              all(geo.top() <= y for y in ys),
+              f"ys={ys}, screen_top={geo.top()}")
+        for o in list(mgr._active):
+            o.dismiss()
         settings._history.deactivate()
         settings.hide()
 
