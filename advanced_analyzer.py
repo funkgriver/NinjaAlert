@@ -137,6 +137,7 @@ class _Metrics:
     w_l: float
     med: float = 0.0                   # item median rt (kept for residual recompute)
     scale: float = 0.0                 # item robust scale (kept for residual recompute)
+    redelisted: bool = False           # item reappeared within delist_window_hours (C10)
 
 
 # ------------------------------------------------------------------- analyzer
@@ -159,6 +160,7 @@ class AnomalyAnalyzer:
         self._last_snap: Dict[str, float] = {}         # category -> last snapshot ts
         self._snap_interval: Dict[str, float] = {}     # category -> EWMA poll interval (s)
         self._snap_size: Dict[str, float] = {}         # category -> EWMA snapshot size
+        self._disappeared: Dict[str, float] = {}       # key -> last delist ts (C10)
 
     @property
     def cfg(self):
@@ -223,6 +225,15 @@ class AnomalyAnalyzer:
         pool.append(rt_abs)
         self._cat_rt_n[category] = self._cat_rt_n.get(category, 0) + 1
 
+    def _observe_disappearance(self, key: str, ts: float) -> None:
+        """Plan item C10: the item left the market (listingCount < 1). Kept as
+        a possible-buyout signal for delist_window_hours; the stale price of
+        the vanished listing never feeds the baseline."""
+        prev = self._disappeared.get(key)
+        if prev is None or ts > prev:
+            self._disappeared[key] = ts
+            log.debug("item vanished from market: %s", key)
+
     def _category_mad(self, category: str) -> Optional[float]:
         """Typical |unit-time return| of the category (median of nonzero |rt|)."""
         pool = self._cat_rt.get(category)
@@ -273,6 +284,10 @@ class AnomalyAnalyzer:
 
         ready = len(st.rt) >= c.min_history
         med = 0.0
+        # plan item C10: the item reappeared after a delist - a repricing on
+        # top of a vanished supply is a strong cornering feature
+        redelisted = (tick.ts - self._disappeared.get(tick.key, -1.0e18)
+                      <= getattr(c, "delist_window_hours", 6.0) * 3600.0)
         if ready:
             med = _median(st.rt)
             mad = _median(abs(x - med) for x in st.rt)
@@ -338,7 +353,7 @@ class AnomalyAnalyzer:
         st.last_ts, st.last_price = tick.ts, tick.price
         st.lv, st.ll = tick.volume, tick.listings
         return _Metrics(ready, r, z_adj, crossover, confirmed, rvol, supply, basis, w_l,
-                        med, scale)
+                        med, scale, redelisted)
 
     def _fresh(self, tick: ItemTick) -> _ItemState:
         return _ItemState(self.cfg.window, tick.price, tick.ts,
@@ -351,6 +366,7 @@ class AnomalyAnalyzer:
         self._cat_rt.clear()
         self._cat_rt_n.clear()
         self._cat_mad_cache.clear()
+        self._disappeared.clear()
         self._last_snap.clear()
         self._snap_interval.clear()
         self._snap_size.clear()
@@ -367,6 +383,10 @@ class AnomalyAnalyzer:
         count = 0
         for tick in ticks_sorted:
             try:
+                if tick.price <= 0:        # delisted marker (C10): keep the fact
+                    self._observe_disappearance(tick.key, tick.ts)
+                    count += 1
+                    continue
                 t_days = self.phase.league_day(now or tick.ts,
                                                self._league_start(tick.key.split(":", 1)[0]))
                 hf, hs = self.phase.half_lives(t_days)
@@ -391,6 +411,9 @@ class AnomalyAnalyzer:
         for k in stale:
             del self._states[k]
             self.ready_keys.discard(k)
+        stale_d = [k for k, ts in self._disappeared.items() if ts < older_than_ts]
+        for k in stale_d:
+            del self._disappeared[k]
         return len(stale)
 
     def process(self, snap: Snapshot, collect: Optional[list] = None) -> List[Anomaly]:
@@ -406,6 +429,9 @@ class AnomalyAnalyzer:
         rows: List[Tuple[ItemTick, float, _Metrics]] = []
         for tick in snap.ticks:
             try:
+                if tick.price <= 0:        # delisted marker (C10): keep the fact,
+                    self._observe_disappearance(tick.key, tick.ts)
+                    continue               # never feed the stale/zero price forward
                 st = self._states.get(tick.key)
                 if st is None or (tick.ts - st.last_ts) / 3600.0 > c.max_gap_hours:
                     self._states[tick.key] = self._fresh(tick)
@@ -502,6 +528,8 @@ class AnomalyAnalyzer:
         f1 = 1.0 - m.w_l
         f2 = _clip(1.0 - m.rvol / c.rvol_ref, 0.0, 1.0) if m.rvol is not None else c.no_volume_prior
         f3 = _clip((1.0 - m.supply) / 0.5, 0.0, 1.0) if (m.supply is not None and m.r > 0) else 0.0
+        if m.redelisted and m.r > 0:
+            f3 = 1.0                   # vanished supply then repriced up: buyout signal
         f4 = _clip(m.basis / c.basis_saturation, 0.0, 1.0) if m.basis is not None else 0.0
         f5 = 0.0 if m.confirmed else 1.0
         f6 = 1.0 - breadth if breadth is not None else 0.5
@@ -731,6 +759,14 @@ def ticks_from_quotes(quotes, ts: float) -> List[ItemTick]:
         try:
             price = float(q.price)
             if not math.isfinite(price) or price <= 0:
+                # plan item C10: a delisted marker travels as a zero-price tick
+                # (the stale price must never leak into a baseline); the engine
+                # records the disappearance and stores the fact in history
+                if price == 0.0 and getattr(q, "delisted", False):
+                    ticks.append(ItemTick(
+                        key=str(q.key), name=str(q.name),
+                        category=f"{q.game}:{q.source}:{q.category}",
+                        price=0.0, volume=None, listings=0.0, aux=None, ts=ts))
                 continue
             # a NaN/inf in any secondary field would poison medians/EMAs downstream
             volume = float(q.volume) if getattr(q, "volume", None) is not None else None

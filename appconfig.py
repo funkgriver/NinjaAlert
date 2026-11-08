@@ -113,6 +113,8 @@ class DetectorCfg:
     # exchange quotes carry no listings: volume/(volume+V0) is their liquidity
     # weight (0 disables, w_l=1)
     liquidity_v0: float = 200.0
+    # a delist (listingCount < 1) boosts the manipulation feature for this long
+    delist_window_hours: float = 6.0
     max_gap_hours: float = 72.0
     # ---- confirmation / classification (spec sections 3-4) -----------------
     crossover_confirm: float = 0.75
