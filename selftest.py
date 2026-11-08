@@ -615,6 +615,48 @@ def test_advanced() -> None:
         check("C9: poller merges re-scan categories across alerts",
               pw._wake_cats == {"Currency", "Fragment"}, str(sorted(pw._wake_cats)))
 
+        # ---- 4j. vanished items become a buyout feature (C10) -------------
+        from types import SimpleNamespace
+        from api_client import NinjaApiClient
+        cl = NinjaApiClient()
+        meta_q, quotes = cl._parse_item("poe1", "L", SimpleNamespace(id="UniqueArmour"),
+                                        {"lines": [
+                                            {"name": "Vanished", "chaosValue": 12.0,
+                                             "listingCount": 0},
+                                            {"name": "Live", "chaosValue": 5.0,
+                                             "listingCount": 7},
+                                            {"name": "NoCount", "chaosValue": 3.0},
+                                        ]})
+        check("C10: parser marks zero-listing lines delisted, keeps live ones",
+              len(quotes) == 3 and quotes[0].delisted and quotes[0].price == 0.0
+              and not quotes[1].delisted and not quotes[2].delisted,
+              str([(q.name, q.price, q.delisted) for q in quotes]))
+        del_ticks = ticks_from_quotes(quotes, 1_000.0)
+        check("C10: delisted quote travels as a zero-price tick",
+              len(del_ticks) == 3 and del_ticks[0].price == 0.0
+              and del_ticks[0].listings == 0.0, str(del_ticks[:1]))
+
+        ad = AnomalyAnalyzer(DetectorCfg(), lambda g: "")
+        tsk = [ItemTick(key="k", name="k", category="c", price=10.0, volume=None,
+                        listings=30.0, aux=None, ts=100.0 + i * 3600.0)
+               for i in range(25)]
+        ad.warm_start(tsk)
+        ad.process(Snapshot(game="poe1", category="c", league="",
+                            ts=100.0 + 25 * 3600.0, source="documented",
+                            ticks=(ItemTick(key="k", name="k", category="c", price=0.0,
+                                            volume=None, listings=0.0, aux=None,
+                                            ts=100.0 + 25 * 3600.0),)))
+        check("C10: disappearance recorded, baseline untouched",
+              "k" in ad._disappeared and ad._states["k"].last_price == 10.0,
+              str(ad._disappeared))
+        m = ad._advance(ad._states["k"],
+                        ItemTick(key="k", name="k", category="c", price=11.0, volume=None,
+                                 listings=2.0, aux=None, ts=100.0 + 26 * 3600.0),
+                        12.0, 72.0)
+        check("C10: reappearance after delist raises the manipulation feature",
+              m is not None and m.redelisted and ad._features(m, None)[2] == 1.0,
+              f"redelisted={getattr(m, 'redelisted', None)}")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
