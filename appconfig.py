@@ -106,6 +106,9 @@ class DetectorCfg:
     # empirical alert-rate cap: pick the category z* so raw (pre-governor)
     # alerts stay near this target; the phase model remains the lower bound
     target_alerts_per_category_per_day: float = 20.0
+    # shrink a young item's MAD toward the category's typical |return| with
+    # weight n/(n+k); 0 disables
+    mad_shrink_k: float = 30.0
     liquidity_l0: float = 20.0
     max_gap_hours: float = 72.0
     # ---- confirmation / classification (spec sections 3-4) -----------------

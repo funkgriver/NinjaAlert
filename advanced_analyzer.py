@@ -35,6 +35,7 @@ log = logging.getLogger("ninjaalert.advanced")
 EPS = 1e-9
 Z_POOL_MAX = 4096                  # recent |z_adj| samples kept per category
 Z_POOL_MIN = 200                   # samples before the empirical threshold is trusted
+CAT_RT_MAX = 2048                  # recent |rt| samples kept per category (B4 shrinkage)
 
 
 # ---------------------------------------------------------------- small helpers
@@ -143,6 +144,9 @@ class AnomalyAnalyzer:
         # empirical distribution can cap the raw alert rate (B3) instead of the
         # governor filtering noise after the fact
         self._z_pool: Dict[str, Deque[float]] = {}     # category -> recent |z_adj|
+        self._cat_rt: Dict[str, Deque[float]] = {}     # category -> recent |rt| (nonzero used)
+        self._cat_rt_n: Dict[str, int] = {}            # category -> total |rt| appended
+        self._cat_mad_cache: Dict[str, Tuple[int, float]] = {}
         self._last_snap: Dict[str, float] = {}         # category -> last snapshot ts
         self._snap_interval: Dict[str, float] = {}     # category -> EWMA poll interval (s)
         self._snap_size: Dict[str, float] = {}         # category -> EWMA snapshot size
@@ -202,6 +206,40 @@ class AnomalyAnalyzer:
         idx = min(int((1.0 - tail) * len(data)), len(data) - 1)
         return max(0.0, data[idx])
 
+    # -- young-baseline shrinkage (plan item B4) ------------------------------
+    def _observe_rt(self, category: str, rt_abs: float) -> None:
+        pool = self._cat_rt.get(category)
+        if pool is None:
+            pool = self._cat_rt[category] = deque(maxlen=CAT_RT_MAX)
+        pool.append(rt_abs)
+        self._cat_rt_n[category] = self._cat_rt_n.get(category, 0) + 1
+
+    def _category_mad(self, category: str) -> Optional[float]:
+        """Typical |unit-time return| of the category (median of nonzero |rt|)."""
+        pool = self._cat_rt.get(category)
+        if not pool:
+            return None
+        n = self._cat_rt_n.get(category, 0)
+        cached = self._cat_mad_cache.get(category)
+        if cached is not None and cached[0] == n:
+            return cached[1]
+        vals = [x for x in pool if x > 0.0]
+        val = _median(vals) if vals else 0.0
+        self._cat_mad_cache[category] = (n, val)
+        return val
+
+    def _blended_mad(self, category: str, mad: float, n: int) -> float:
+        """MAD of an item with few stored returns must not trust itself: blend
+        with the category's typical return scale, weight w = n/(n+k)."""
+        k = getattr(self.cfg, "mad_shrink_k", 0.0)
+        if k <= 0 or n <= 0:
+            return mad
+        cat_mad = self._category_mad(category)
+        if not cat_mad or cat_mad <= 0.0:
+            return mad
+        w = n / (n + k)
+        return w * mad + (1.0 - w) * cat_mad
+
     # -- one update step shared by live processing and warm start
     def _advance(self, st: _ItemState, tick: ItemTick, hf: float, hs: float) -> Optional[_Metrics]:
         c = self.cfg
@@ -220,6 +258,7 @@ class AnomalyAnalyzer:
         if ready:
             med = _median(st.rt)
             mad = _median(abs(x - med) for x in st.rt)
+            mad = self._blended_mad(tick.category, mad, len(st.rt))
             scale = max(1.4826 * mad, c.mad_floor)
             z = (rt - med) / scale
         else:
@@ -258,6 +297,7 @@ class AnomalyAnalyzer:
             st.lnaux.append(la)
 
         st.rt.append(rt)
+        self._observe_rt(tick.category, abs(rt))
         st.last_ts, st.last_price = tick.ts, tick.price
         return _Metrics(ready, r, z_adj, crossover, confirmed, rvol, supply, basis, w_l)
 
@@ -268,6 +308,9 @@ class AnomalyAnalyzer:
         self._states.clear()
         self.ready_keys.clear()
         self._z_pool.clear()
+        self._cat_rt.clear()
+        self._cat_rt_n.clear()
+        self._cat_mad_cache.clear()
         self._last_snap.clear()
         self._snap_interval.clear()
         self._snap_size.clear()
