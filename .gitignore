@@ -21,3 +21,6 @@ config.json
 # IDE
 .vscode/
 .idea/
+
+# build staging (never commit binaries)
+dist_new/
