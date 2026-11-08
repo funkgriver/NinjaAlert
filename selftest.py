@@ -512,6 +512,36 @@ def test_advanced() -> None:
         check("B5: genuine move after step-quantized prices still alerts",
               len(real_anoms) == 1, str([round(a.z_adj, 2) for a in real_anoms]))
 
+        # ---- 4f. category-wide shift -> one market event (B6) -------------
+        cfgm = DetectorCfg()
+        cfgm.target_alerts_per_category_per_day = 0.0
+        amk = AnomalyAnalyzer(cfgm, lambda g: "")
+        ts0 = 8_000_000.0
+        mk_items = [f"poe1:x:Currency:m{i}" for i in range(12)]
+
+        def mk_snap(i, shift=1.0):
+            ticks = tuple(
+                ItemTick(key=k, name=k, category="poe1:x:Currency",
+                         price=10.0 * shift * (1.0 + 0.002 * ((i + n) % 5 - 2)),
+                         volume=None, listings=None, aux=None, ts=ts0 + i * 3600.0)
+                for n, k in enumerate(mk_items))
+            return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                            ts=ts0 + i * 3600.0, source="documented", ticks=ticks)
+
+        for i in range(25):
+            amk.process(mk_snap(i))
+        market = amk.process(mk_snap(25, shift=1.05))          # whole category +5%
+        check("B6: 5% category-wide shift yields exactly one market event",
+              len(market) == 1 and market[0].key.endswith("#market"),
+              str([(a.key, round(a.pct, 1)) for a in market]))
+        revert = amk.process(mk_snap(26))                      # -5% reversal
+        check("B6: the reversal is one market event too, not N alerts",
+              len(revert) == 1 and revert[0].key.endswith("#market"),
+              str([(a.key, round(a.pct, 1)) for a in revert]))
+        quiet = amk.process(mk_snap(27))                       # stable again
+        check("B6: stable snapshot stays quiet (no #market residue)",
+              not quiet, str([a.key for a in quiet]))
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
