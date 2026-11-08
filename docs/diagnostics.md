@@ -48,3 +48,23 @@ history-poe2.sqlite3
 
 These numbers motivated blocks B (robust scale/thresholds), C (unchanged-tick skip,
 category-scoped re-scan) and D (outcome-based labels, priority).
+
+## After blocks B+C (same real history, new engine)
+
+```
+
+history-poe1.sqlite3
+  evaluated ticks: 176008   span: 0.2 days
+  raw alerts (pre-governor): 125  ->  528.0 per day, 0.71 per 1000 ticks
+  mean z* = 3.12; a Gaussian model would give 1.83 per 1000 ticks (before the min-move gate)
+  categories : poe1:item:SkillGem=39, poe1:item:UniqueArmour=27, poe1:item:UniqueWeapon=22, poe1:item:UniqueAccessory=17, poe1:item:UniqueJewel=17, poe1:item:Map=3
+  phases     : Mature=125
+  labels     : ORGANIC=90, AMBIGUOUS=27, SUSPECT=8
+  |z| buckets: >=6=64, 4.5-6=30, 3.5-4.5=18, <3.5=13
+  reading: raw rate far above the Gaussian figure = heavy tails; the governor is then doing the noise filtering, not the detector.
+```
+
+Raw alert rate: **38.96 -> 0.71 per 1000 ticks (55x)** - the detector now sits below
+the Gaussian expectation (1.83/1000) instead of 17x above it, i.e. the detector filters
+noise itself and the governor is back to being a budget, not a noise gate. SkillGem
+raw alerts: 3988 -> 39 (price-step floor + unchanged-tick skip).
