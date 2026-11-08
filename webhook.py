@@ -117,6 +117,28 @@ class WebhookSender:
             log.info("webhook delivered: %s", payload.get("name"))
 
 
+def confirm_record(key: str, ref: Dict[str, Any], new_price: Optional[float],
+                   now: float) -> Dict[str, Any]:
+    """Journal record for one confirmation re-scan outcome (plan item C9).
+
+    ref carries the alert context: ref_ts, alert_price, prev_price, game,
+    league, cat_id. new_price None means the item vanished from the re-scanned
+    category. held = the move kept >= 50% of its size versus the alert's own
+    baseline - same semantics as tools/backtest.py.
+    """
+    move = ref["alert_price"] - ref["prev_price"]
+    share = None if (new_price is None or abs(move) < 1e-12) \
+        else (new_price - ref["prev_price"]) / move
+    return {
+        "type": "confirm", "key": key, "ref_ts": ref["ref_ts"], "ts": now,
+        "game": ref["game"], "league": ref["league"], "category": ref["cat_id"],
+        "held": bool(share is not None and share >= 0.5),
+        "share": None if share is None else round(share, 3),
+        "price": new_price, "alert_price": ref["alert_price"],
+        "prev_price": ref["prev_price"],
+    }
+
+
 class AlertJournal:
     """Append-only JSONL of every alert admitted by the governor (analysis input)."""
 

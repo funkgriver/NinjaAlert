@@ -594,6 +594,27 @@ def test_advanced() -> None:
                   f"store={pp.store.count()}, zero_rt={len(zero_rt)}")
             pp.close()
 
+        # ---- 4i. confirmation re-scan plumbing (C9) -----------------------
+        from webhook import confirm_record
+        ref = {"ref_ts": 100.0, "alert_price": 110.0, "prev_price": 100.0,
+               "game": "poe1", "league": "L", "cat_id": "Currency"}
+        rec_held = confirm_record("k", ref, 108.0, 200.0)     # 80% of the move kept
+        rec_rev = confirm_record("k", ref, 101.0, 200.0)      # 10% kept
+        rec_gone = confirm_record("k", ref, None, 200.0)      # vanished
+        check("C9: confirm_record grades held/reverted/gone",
+              rec_held["held"] and abs(rec_held["share"] - 0.8) < 1e-9
+              and not rec_rev["held"] and rec_rev["share"] == 0.1
+              and not rec_gone["held"] and rec_gone["share"] is None
+              and rec_gone["type"] == "confirm",
+              f"{rec_held['share']}/{rec_rev['share']}/{rec_gone['share']}")
+
+        from poller import PollWorker
+        pw = PollWorker(object(), Config(), "poe1")
+        pw.wake_soon(60.0, categories={"Currency"})
+        pw.wake_soon(60.0, categories={"Fragment"})
+        check("C9: poller merges re-scan categories across alerts",
+              pw._wake_cats == {"Currency", "Fragment"}, str(sorted(pw._wake_cats)))
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")

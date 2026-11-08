@@ -22,6 +22,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 from datetime import date
 from typing import Dict, Optional
 
@@ -38,7 +39,7 @@ from dataclasses import replace as dc_replace
 from poller import PollWorker
 from ui_overlay import ToastManager
 from ui_settings import SettingsWindow
-from webhook import AlertJournal, WebhookSender, format_alert_text
+from webhook import AlertJournal, WebhookSender, confirm_record, format_alert_text
 
 log = logging.getLogger("ninjaalert.main")
 
@@ -185,6 +186,7 @@ class NinjaAlertController(QObject):
         self._worker: Optional[AnalysisWorker] = None
         self._icon_map: Dict[str, str] = {}
         self._meta_league: Dict[str, str] = {}       # league seen in latest meta per game
+        self._pending_confirms: Dict[str, dict] = {} # key -> alert ref awaiting re-scan (C9)
         self._current_league: Dict[str, str] = {}    # league from leagues endpoint
         self._runtime_new_leagues: set = set()       # rollovers detected while running
         self._poller_states: Dict[str, str] = {}
@@ -312,6 +314,7 @@ class NinjaAlertController(QObject):
         except Exception:
             log.exception("history read failed")
             return []
+        recs = [r for r in recs if not r.get("type")]   # confirm markers are not alerts
         for r in recs:
             key = r.get("key")
             if not r.get("icon") and key and key in self._icon_map:
@@ -403,6 +406,7 @@ class NinjaAlertController(QObject):
                 self._worker.reset_game(game)
             self._meta_league[game] = meta.league
 
+            self._resolve_confirms(meta, quotes)
             self._worker.submit_snapshot(game, quotes, meta)
         except Exception:
             log.exception("snapshot hand-off failed (%s)", game)
@@ -423,14 +427,41 @@ class NinjaAlertController(QObject):
                 self._dispatch_alert(annotated, meta)
             if shown and float(self._cfg.alerts.confirm_rescan_seconds) > 0:
                 # confirmation re-scan: wake this game's poller shortly to
-                # re-check the move (one early cycle, core logic untouched)
+                # re-check the moved items only - the cycle fetches just the
+                # alerted categories, not the whole game (plan item C9)
                 worker = self._pollers.get(result["game"])
                 if worker is not None:
-                    worker.wake_soon(float(self._cfg.alerts.confirm_rescan_seconds))
+                    cats = {a.key.split(":")[2] for a in shown
+                            if len(a.key.split(":")) > 2}
+                    worker.wake_soon(float(self._cfg.alerts.confirm_rescan_seconds),
+                                     categories=cats)
             if result["digest"] is not None:
                 self._toasts.show_digest(result["digest"], result["game"], meta.league)
         except Exception:
             log.exception("alert dispatch failed")
+
+    def _resolve_confirms(self, meta, quotes) -> None:
+        """A re-scanned category settles its pending confirmations: one
+        confirmation record per alerted item goes to alerts.jsonl (C9)."""
+        if not self._pending_confirms:
+            return
+        now = time.time()
+        by_key = {q.key: float(q.price) for q in quotes if q.price > 0}
+        scoped = [k for k, p in self._pending_confirms.items()
+                  if p["game"] == meta.game and p["cat_id"] == meta.category]
+        for key in scoped:
+            ref = self._pending_confirms.pop(key)
+            new_price = by_key.get(key)              # None: gone from the market
+            rec = confirm_record(key, ref, new_price, now)
+            self._journal.append(rec)
+            log.info("confirm %s: %s (share %s)", key,
+                     "held" if rec["held"] else
+                     ("gone" if rec["share"] is None else "reverted"),
+                     rec["share"])
+        stale = [k for k, p in self._pending_confirms.items() if p["due"] < now]
+        for k in stale:                              # category was never re-fetched
+            del self._pending_confirms[k]
+            log.info("confirm %s: expired unresolved", k)
 
     def _on_worker_note(self, text: str) -> None:
         log.info("engine: %s", text)
@@ -511,6 +542,14 @@ class NinjaAlertController(QObject):
         }
         self._journal.append(payload)
         self._webhook.notify(payload)
+        if float(self._cfg.alerts.confirm_rescan_seconds) > 0 and len(parts) > 2:
+            # remember the alert so the category re-scan can grade the move (C9)
+            self._pending_confirms[a.key] = {
+                "ref_ts": a.ts, "alert_price": a.price, "prev_price": a.prev_price,
+                "game": a.game, "cat_id": cat_id, "league": meta.league,
+                "due": time.time() + max(
+                    float(self._cfg.alerts.confirm_rescan_seconds) * 4.0, 1800.0),
+            }
 
     # ------------------------------------------------------------ status UI
     def _on_leagues(self, game: str, league_ids) -> None:
