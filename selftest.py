@@ -897,6 +897,21 @@ def test_hardening() -> None:
                   st2.count() == 0 and pages < 100, f"pages={pages}")
             st2.close()
 
+        # QA P1: one broken scenario value must not reset the whole config (G4)
+        from appconfig import ScenarioCfg
+        cfgq = Config()
+        cfgq.webhook.url = "https://keep.example/hook"
+        cfgq.scenarios = [
+            ScenarioCfg(name="bad", game="poe1", category="*", metric="pct",
+                        op=">=", value="abc", direction="any", cooldown_minutes=60.0),
+            ScenarioCfg(name="good", game="poe1", category="*", metric="pct",
+                        op=">=", value=5.0, direction="any", cooldown_minutes=60.0)]
+        cfgq._sanitize()
+        check("config: broken scenario dropped, config survives",
+              len(cfgq.scenarios) == 1 and cfgq.scenarios[0].name == "good"
+              and cfgq.webhook.url == "https://keep.example/hook",
+              str([(x.name, x.value) for x in cfgq.scenarios]))
+
         # ---- api transport ----------------------------------------------------
         class FakeResp:
             def __init__(self, status, payload=None, headers=None):
@@ -938,6 +953,48 @@ def test_hardening() -> None:
         got2 = client5.get_leagues("poe1", force=True)
         check("api: 304 leagues without cache refetches",
               [l.id for l in got2] == ["L1", "L2"], str(got2))
+
+        # QA P0: NaN/inf prices must be rejected by BOTH parsers (F-04)
+        from types import SimpleNamespace as _NS
+        pcli = NinjaApiClient()
+        meta_i, qi = pcli._parse_item("poe1", "L", _NS(id="UniqueArmour"), {"lines": [
+            {"name": "NaN", "chaosValue": float("nan")},
+            {"name": "Inf", "chaosValue": float("inf")},
+            {"name": "Ok", "chaosValue": 5.0}]})
+        check("api: item parser rejects NaN/inf prices",
+              len(qi) == 1 and qi[0].price == 5.0, str([(q.name, q.price) for q in qi]))
+        meta_e, qe = pcli._parse_exchange("poe1", "L", _NS(id="Currency"),
+                                          {"lines": [{"id": "nan-quote",
+                                                      "primaryValue": float("nan")},
+                                                     {"id": "ok-quote",
+                                                      "primaryValue": 1.5}]})
+        check("api: exchange parser rejects NaN prices",
+              len(qe) == 1 and qe[0].price == 1.5, str([(q.name, q.price) for q in qe]))
+
+        # QA P0: concurrent league refresh on one client (GUI + PollWorker)
+        import threading as _thr
+        import api_client as _ac
+        old_gap = _ac.MIN_REQUEST_GAP_SECONDS
+        _ac.MIN_REQUEST_GAP_SECONDS = 0.001   # speed the race up
+        client8 = NinjaApiClient()
+        client8._sess = FakeSession([FakeResp(200, [{"id": "L1"}])])
+        errs = []
+
+        def _hammer():
+            for _ in range(40):
+                try:
+                    client8.get_leagues("poe1", force=True)
+                except Exception as exc:               # noqa: BLE001 - test spy
+                    errs.append(exc)
+
+        ths = [_thr.Thread(target=_hammer) for _ in range(2)]
+        for t in ths:
+            t.start()
+        for t in ths:
+            t.join()
+        _ac.MIN_REQUEST_GAP_SECONDS = old_gap
+        check("api: concurrent league refresh is race-free",
+              not errs and client8._leagues["poe1"][0].id == "L1", str(errs[:2]))
 
         # streaming load: iter_since == load_since, max_rows keeps the newest
         hist = [ItemTick(key="k", name="K", category="poe1:x:Currency",
@@ -1180,6 +1237,38 @@ def test_features() -> None:
         check("webhook: generic POST url + payload",
               captured and captured[0][0] == "https://example.test/hook"
               and '"priority"' in captured[0][1]["data"], str(captured)[:120])
+
+        # QA P0: webhook token must never reach the log (SEC-01)
+        import logging as _logging
+        cfgw3 = Config()
+        cfgw3.webhook.enabled = True
+        cfgw3.webhook.url = "https://discord.com/api/webhooks/123456/TOKEN-XYZ"
+        sw3 = wh.WebhookSender(lambda: cfgw3)
+        got_logs: list = []
+
+        class _Spy(_logging.Handler):
+            def emit(self, record):
+                got_logs.append(record.getMessage())
+
+        _spy = _Spy(level=_logging.WARNING)
+        whlog = _logging.getLogger("ninjaalert.webhook")
+        whlog.addHandler(_spy)
+        try:
+            real_post2 = wh.requests.post
+
+            class _R502:
+                status_code = 502
+
+            wh.requests.post = lambda *a, **k: _R502()
+            sw3._send({"name": "X", "priority": 1.0})
+        finally:
+            wh.requests.post = real_post2
+            whlog.removeHandler(_spy)
+            sw3.stop()
+        check("webhook: token never hits the log on HTTP error",
+              any("HTTP 502" in m for m in got_logs)
+              and not any("TOKEN-XYZ" in m for m in got_logs),
+              str(got_logs)[:160])
         cfgt2 = Config()
         cfgt2.webhook.enabled = True          # no url configured
         sender2 = wh.WebhookSender(lambda: cfgt2)
@@ -1352,6 +1441,17 @@ def test_qt() -> None:
               and "QPushButton#primaryButton:pressed" in DARK_QSS
               and "QPushButton:checked" in DARK_QSS
               and settings._save_btn.cursor().shape() == _QtQ.CursorShape.PointingHandCursor)
+
+        # QA P1: invalid league_start is flagged in the UI, not only in the log (G5)
+        settings._league_start_edit.setText("2026-13-45")
+        settings._save()
+        check("ui: invalid league_start flagged in the field",
+              settings._league_start_edit.property("error") is True)
+        settings._league_start_edit.setText("2026-11-09")
+        settings._save()
+        check("ui: valid league_start clears the error flag",
+              settings._league_start_edit.property("error") is False)
+        settings._league_start_edit.setText("")
         from appconfig import ScenarioCfg
         settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
                                                 metric="pct", value=5.0))

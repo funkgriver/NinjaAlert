@@ -24,6 +24,17 @@ log = logging.getLogger("ninjaalert.webhook")
 JOURNAL_MAX_BYTES = 5 * 1024 * 1024   # alerts.jsonl rotates above this (keeps .old)
 
 
+def _mask_url(url: str) -> str:
+    """scheme://host/… - webhook endpoints carry tokens in the path; the log
+    must never store them."""
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        return f"{p.scheme}://{p.netloc}/…" if p.scheme and p.netloc else "…"
+    except Exception:
+        return "…"
+
+
 def format_alert_text(a, league: str) -> str:
     """Human-readable one-liner for webhook/discord-style sinks."""
     pct = f"{a.pct:+.1f}%" if a.prev_price else ""
@@ -112,10 +123,13 @@ class WebhookSender:
             resp = requests.post(cfg.webhook.url, data=json.dumps(payload),
                                  headers=headers, timeout=timeout)
         except requests.RequestException as exc:
-            log.warning("webhook POST failed: %s", exc)
+            # exc text may embed the full URL (with its token) - log type only
+            log.warning("webhook POST to %s failed: %s",
+                        _mask_url(cfg.webhook.url), type(exc).__name__)
             return
         if resp.status_code >= 300:
-            log.warning("webhook POST %s -> HTTP %d", cfg.webhook.url, resp.status_code)
+            log.warning("webhook POST %s -> HTTP %d",
+                        _mask_url(cfg.webhook.url), resp.status_code)
         else:
             log.info("webhook delivered: %s", payload.get("name"))
 
