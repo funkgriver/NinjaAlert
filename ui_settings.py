@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import replace as dc_replace
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPixmap
@@ -40,7 +40,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from api_client import BASE_URL
+from api_client import BASE_URL, is_permanent_league, league_is_variant
 from appconfig import Config, ScenarioCfg, VALID_DIRECTIONS, VALID_METRICS, VALID_OPS, \
     app_dir
 from categories import CATEGORIES, labels_for
@@ -824,21 +824,45 @@ class SettingsWindow(QWidget):
             self.refresh_leagues_requested.emit(self._editing_game)
 
     def _on_league_picked(self, text: str) -> None:
-        if not self._auto_league.isChecked() and text:
-            self._cfg.game_cfg(self._editing_game).league = text
+        if not self._auto_league.isChecked():
+            data = self._league_combo.currentData()
+            self._cfg.game_cfg(self._editing_game).league = data or text
 
     def _fill_league_combo(self) -> None:
         game = self._editing_game
         gc = self._cfg.game_cfg(game)
         leagues = self._leagues.get(game, [])
-        current = (gc.league or (leagues[0] if leagues else "") or "").strip()
+        current = (gc.league or (leagues[0].id if leagues else "") or "").strip()
         self._league_combo.blockSignals(True)
         self._league_combo.clear()
-        items = leagues or ([current] if current else [])
-        self._league_combo.addItems(items)
-        if current:
-            idx = self._league_combo.findText(current)
-            self._league_combo.setCurrentIndex(max(idx, 0))
+        # grouped: the current challenge league on top, markerless events next,
+        # then a disabled separator + HC/SSF variants, then the permanent
+        # Standard/Hardcore trade leagues - the default stays actual
+        main_rows, var_rows, perm_rows = [], [], []
+        for i, lg in enumerate(leagues):
+            if league_is_variant(lg.name):
+                (perm_rows if is_permanent_league(lg.name) else var_rows).append(lg)
+            else:
+                main_rows.append((lg, i == 0))
+        rows: List[Tuple[str, str]] = [
+            (f"{lg.name}  • current" if is_cur else lg.name, lg.id)
+            for lg, is_cur in main_rows]
+        if var_rows:
+            rows.append(("── HC / event variants ──", ""))
+        rows += [(lg.name, lg.id) for lg in var_rows]
+        if perm_rows:
+            rows.append(("── trade leagues ──", ""))
+        rows += [(lg.name, lg.id) for lg in perm_rows]
+        if not rows and current:
+            rows = [(current, current)]
+        for label, data in rows:
+            self._league_combo.addItem(label, data)
+        model = self._league_combo.model()
+        for r in range(self._league_combo.count()):
+            if not self._league_combo.itemData(r):
+                model.item(r).setEnabled(False)   # separators are not choices
+        idx = self._league_combo.findData(current)
+        self._league_combo.setCurrentIndex(max(idx, 0))
         self._league_combo.setEnabled(not self._auto_league.isChecked())
         self._league_combo.blockSignals(False)
 

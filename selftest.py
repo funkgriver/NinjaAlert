@@ -1379,6 +1379,41 @@ def test_qt() -> None:
               _os.path.isfile(wavp) and _os.path.getsize(wavp) > 40000,
               f"{wavp} ({_os.path.getsize(wavp) if _os.path.exists(wavp) else 0} B)")
 
+        # league picker: current league on top, variants grouped, stale -> default
+        from api_client import league_is_variant, is_permanent_league
+        check("leagues: variant/permanent classification",
+              league_is_variant("Hardcore Allflame") and league_is_variant("HC Runes of Aldur")
+              and league_is_variant("Allflame SSF") and is_permanent_league("Standard")
+              and is_permanent_league("Hardcore")
+              and not league_is_variant("Allflame")
+              and not league_is_variant("Runes of Aldur"),
+              "poe2 live list classified")
+        settings._leagues["poe2"] = [
+            type("L", (), {"id": "Forbidden Rites", "name": "Forbidden Rites"}),
+            type("L", (), {"id": "Runes of Aldur", "name": "Runes of Aldur"}),
+            type("L", (), {"id": "HC Forbidden Rites", "name": "HC Forbidden Rites"}),
+            type("L", (), {"id": "Standard", "name": "Standard"}),
+            type("L", (), {"id": "Hardcore", "name": "Hardcore"}),
+        ]
+        settings._editing_game = "poe2"
+        settings._fill_league_combo()
+        combo = settings._league_combo
+        check("leagues: dropdown defaults to the current challenge league",
+              combo.itemText(0).startswith("Forbidden Rites") and combo.itemData(0) == "Forbidden Rites"
+              and combo.currentData() == "Forbidden Rites",
+              f"item0={combo.itemText(0)!r}, data={combo.currentData()!r}")
+        seps = [r for r in range(combo.count()) if not combo.itemData(r)]
+        check("leagues: separators present and disabled",
+              len(seps) == 2 and all(not combo.model().item(r).isEnabled() for r in seps),
+              f"rows={combo.count()}, separators={seps}")
+        settings._cfg.game_cfg("poe2").league = "Gone League"
+        settings._fill_league_combo()
+        check("leagues: stale saved league falls back to the current one",
+              combo.currentData() == "Forbidden Rites",
+              str(combo.currentData()))
+        settings._cfg.game_cfg("poe2").league = ""
+        settings._editing_game = "poe1"
+
         # History tab: provider -> cards, filters
         rec = {"key": "poe1:x:Currency:div", "name": "Divine Orb", "game": "poe1",
                "league": "Allflame", "category": "Currency", "price": 148.0,
