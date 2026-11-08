@@ -13,8 +13,8 @@ import logging
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PyQt6.QtCore import QSize, Qt, QTimer
-from PyQt6.QtGui import QGuiApplication, QPixmap
+from PyQt6.QtCore import QSize, Qt, QTimer, QUrl
+from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -256,7 +256,8 @@ class AlertHistoryCard(QFrame):
     def mouseReleaseEvent(self, event) -> None:
         if self._url and event.button() == Qt.MouseButton.LeftButton:
             try:
-                QGuiApplication.openUrl(self._url)
+                # Qt6: QGuiApplication.openUrl is gone - QDesktopServices it is
+                QDesktopServices.openUrl(QUrl(self._url))
             except Exception:
                 log.exception("could not open %s", self._url)
 
