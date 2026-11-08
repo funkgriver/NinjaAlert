@@ -587,10 +587,11 @@ def test_advanced() -> None:
         r1 = au._advance(stu, utick(10.0, 900.0, v=100.0, l=50.0), 12.0, 72.0)
         r2 = au._advance(stu, utick(10.0, 1800.0, v=120.0, l=50.0), 12.0, 72.0)
         r3 = au._advance(stu, utick(10.5, 2700.0, v=120.0, l=50.0), 12.0, 72.0)
-        check("C8: fully unchanged tick skipped, volume/price changes are not",
-              r1 is None and r2 is not None and r3 is not None and len(stu.rt) == 2
-              and r2.r == 0.0 and abs(r3.r - math.log(1.05)) < 1e-9,
-              f"rt={ [round(x, 4) for x in stu.rt] }")
+        check("C8: price-unchanged ticks skip returns, liquidity EMAs refresh",
+              r1 is None and r2 is None and r3 is not None and len(stu.rt) == 1
+              and stu.ev is not None and stu.ev > 100.0
+              and abs(r3.r - math.log(1.05)) < 1e-9,
+              f"rt={[round(x, 4) for x in stu.rt]}, ev={round(stu.ev or 0, 1)}")
 
         with tempfile.TemporaryDirectory() as td2:
             pp = AnalysisPipeline(DetectorCfg(), Alerts(), lambda g: "",
