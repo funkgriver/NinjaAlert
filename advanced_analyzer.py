@@ -36,6 +36,8 @@ EPS = 1e-9
 Z_POOL_MAX = 4096                  # recent |z_adj| samples kept per category
 Z_POOL_MIN = 200                   # samples before the empirical threshold is trusted
 CAT_RT_MAX = 2048                  # recent |rt| samples kept per category (B4 shrinkage)
+MARKET_MIN_ROWS = 5                # min ready items before a market component is separable
+MARKET_COHERENCE = 0.6             # share of same-sign returns for a drift to count
 
 
 # ---------------------------------------------------------------- small helpers
@@ -129,6 +131,8 @@ class _Metrics:
     supply: Optional[float]
     basis: Optional[float]
     w_l: float
+    med: float = 0.0                   # item median rt (kept for residual recompute)
+    scale: float = 0.0                 # item robust scale (kept for residual recompute)
 
 
 # ------------------------------------------------------------------- analyzer
@@ -256,6 +260,7 @@ class AnomalyAnalyzer:
             return None                    # non-finite input must not poison the baseline
 
         ready = len(st.rt) >= c.min_history
+        med = 0.0
         if ready:
             med = _median(st.rt)
             mad = _median(abs(x - med) for x in st.rt)
@@ -311,7 +316,8 @@ class AnomalyAnalyzer:
         st.rt.append(rt)
         self._observe_rt(tick.category, abs(rt))
         st.last_ts, st.last_price = tick.ts, tick.price
-        return _Metrics(ready, r, z_adj, crossover, confirmed, rvol, supply, basis, w_l)
+        return _Metrics(ready, r, z_adj, crossover, confirmed, rvol, supply, basis, w_l,
+                        med, scale)
 
     def _fresh(self, tick: ItemTick) -> _ItemState:
         return _ItemState(self.cfg.window, tick.price, tick.ts)
@@ -394,6 +400,26 @@ class AnomalyAnalyzer:
         if not rows:
             return []
 
+        # plan item B6: split the market-wide component from item-specific moves.
+        # Only a coherent drift (most rows moving the same way) is a market
+        # component; in a split category the median can swallow a real item
+        # signal. Small cohorts cannot separate a drift at all.
+        cat_med_r, cat_scale = 0.0, 0.0
+        if len(rows) >= MARKET_MIN_ROWS:
+            up = sum(1 for _, _, m in rows if m.r > 0)
+            coherent = max(up, len(rows) - up) / len(rows) >= MARKET_COHERENCE
+            if coherent:
+                cat_med_r = _median(m.r for _, _, m in rows)
+                cat_scale = max(_median(m.scale for _, _, m in rows), EPS)
+                if (abs(cat_med_r) >= z_star * cat_scale
+                        and abs(cat_med_r) >= c.min_log_move):
+                    # whole category shifted: one event instead of N alerts
+                    return [self._market_anomaly(snap, cat_med_r, z_star, cat_scale,
+                                                 t_days, phase, rows)]
+
+        for _, _, m in rows:               # residualize in place (B6)
+            m.z_adj = (m.r - cat_med_r - m.med) / m.scale * math.sqrt(m.w_l)
+
         median_price = _median(t.price for t in snap.ticks) or 1.0
         pos = sum(1 for _, _, m in rows if m.z_adj >= c.breadth_z)
         neg = sum(1 for _, _, m in rows if m.z_adj <= -c.breadth_z)
@@ -410,7 +436,7 @@ class AnomalyAnalyzer:
             manip = self._manipulation(m, breadth)
             if collect is not None:
                 collect.append((self._features(m, breadth), manip))
-            if abs(m.z_adj) < z_star or abs(m.r) < c.min_log_move:
+            if abs(m.z_adj) < z_star or abs(m.r - cat_med_r) < c.min_log_move:
                 continue
             label = ("SUSPECT" if manip >= c.suspect_at
                      else "ORGANIC" if manip <= c.organic_at else "AMBIGUOUS")
@@ -427,6 +453,26 @@ class AnomalyAnalyzer:
                 priority=priority, league_day=t_days, phase=phase))
         out.sort(key=lambda a: a.priority, reverse=True)
         return out
+
+    def _market_anomaly(self, snap: Snapshot, cat_med_r: float, z_star: float,
+                        cat_scale: float, t_days: float, phase: str, rows) -> Anomaly:
+        """One category-wide event instead of N per-item alerts (plan item B6).
+
+        Excluded from the calibration collect path on purpose: a market drift
+        says nothing about an item's own manipulation features.
+        """
+        med_price = _median(t.price for t, _, _ in rows) or 1.0
+        z = cat_med_r / cat_scale
+        return Anomaly(
+            key=f"{snap.category}#market",
+            name=f"Market move · {snap.category.rsplit(':', 1)[-1]}",
+            game=snap.game, category=snap.category, ts=snap.ts,
+            price=med_price, prev_price=med_price / math.exp(cat_med_r),
+            pct=(math.exp(cat_med_r) - 1.0) * 100.0,
+            direction=1 if cat_med_r > 0 else -1,
+            z_adj=z, z_star=z_star, rvol=None, crossover=0.0, confirmed=False,
+            supply_ratio=None, basis_dev=None, breadth=None, manip=0.0,
+            label="ORGANIC", priority=3.0 + abs(z), league_day=t_days, phase=phase)
 
     def _features(self, m: _Metrics, breadth: Optional[float]) -> Tuple[float, ...]:
         """Six normalized manipulation features in [0, 1] (spec section 4)."""
