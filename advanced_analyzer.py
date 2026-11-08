@@ -130,13 +130,24 @@ class _Metrics:
 # ------------------------------------------------------------------- analyzer
 class AnomalyAnalyzer:
     def __init__(self, cfg, league_start_fn: Callable[[str], str]) -> None:
-        self.cfg = cfg
         self.phase = PhaseModel(cfg)
+        self._cfg = cfg
         self._league_start = league_start_fn
         self._states: Dict[str, _ItemState] = {}
         self.ready_keys: set = set()   # keys with a completed robust baseline (auto-mode glue)
         self._weights: Optional[List[float]] = None   # calibrated override (see calibration.py)
         self._bias: Optional[float] = None
+
+    @property
+    def cfg(self):
+        return self._cfg
+
+    @cfg.setter
+    def cfg(self, value) -> None:
+        # keep the phase model in sync: applying saved settings must change
+        # z*(t) and EMA half-lives too, not only the analyzer's own parameters
+        self._cfg = value
+        self.phase.c = value
 
     @property
     def tracked_count(self) -> int:
@@ -232,7 +243,9 @@ class AnomalyAnalyzer:
                 if st is None or (tick.ts - st.last_ts) / 3600.0 > self.cfg.max_gap_hours:
                     self._states[tick.key] = self._fresh(tick)
                 else:
-                    self._advance(st, tick, hf, hs)
+                    m = self._advance(st, tick, hf, hs)
+                    if m is not None and m.ready:
+                        self.ready_keys.add(tick.key)   # baseline survives a restart
             except (TypeError, ValueError, OverflowError):
                 continue                   # corrupt stored row must not kill warm start
             count += 1
@@ -437,8 +450,16 @@ class AlertGovernor:
                            self._tokens + (now - self._t0) / cfg.refill_seconds)
         self._t0 = now
 
+        # one candidate per item: the robust and basic engines may both flag the
+        # same key in one batch; only the highest-priority one may compete
+        best: Dict[str, Anomaly] = {}
+        for a in anomalies:
+            cur = best.get(a.key)
+            if cur is None or a.priority > cur.priority:
+                best[a.key] = a
+
         eligible: List[Anomaly] = []
-        for a in sorted(anomalies, key=lambda x: x.priority, reverse=True):
+        for a in sorted(best.values(), key=lambda x: x.priority, reverse=True):
             cool = self._cool.get(a.key)
             if cool is not None:
                 age = now - cool.last_ts
