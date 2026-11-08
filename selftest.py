@@ -1334,6 +1334,17 @@ def test_qt() -> None:
         # tabs + scenarios draft + live status provider
         check("qt: four tabs present", settings._tabs.count() == 4,
               str(settings._tabs.count()))
+        # main window is genuinely resizable (no fixed maximum, sane minimum)
+        from PyQt6.QtWidgets import QWidget
+        check("qt: settings window resizable",
+              settings.minimumSize().height() >= 600
+              and settings.minimumSize().width() >= 900
+              and settings.maximumSize().width() == QWidget().maximumSize().width(),
+              f"min={settings.minimumSize().width()}x{settings.minimumSize().height()}, "
+              f"maxW={settings.maximumSize().width()}")
+        check("qt: poller discovery sweeps patch day",
+              __import__("poller").SECTION_DISCOVERY_SECONDS <= 6 * 3600,
+              str(__import__("poller").SECTION_DISCOVERY_SECONDS))
         from appconfig import ScenarioCfg
         settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
                                                 metric="pct", value=5.0))
@@ -1341,13 +1352,18 @@ def test_qt() -> None:
         check("qt: scenario draft listed", settings._scen_list.count() == 1)
         settings.set_status_provider(lambda: {
             "engine": "auto", "auto_calibrate": False, "scenarios": 1,
-            "poller_states": {"poe1": "waiting"}, "worker_stats": {"poe1": (7, 21)},
+            "poller_states": {"poe1": "waiting", "poe2": "disabled"},
+            "worker_stats": {"poe1": (7, 21), "poe2": (0, 0)},
+            "enabled": {"poe1": True, "poe2": False},
             "last_detail": "ok", "leagues": {"poe1": "Allflame"}})
         settings.show()
         settings._refresh_status()
         check("qt: status tab renders provider snapshot",
               "7 robust + 21 basic" in settings._live_labels["poe1"].text(),
               settings._live_labels["poe1"].text())
+        check("qt: disabled game says off, not monitoring",
+              settings._live_labels["poe2"].text().startswith("off"),
+              settings._live_labels["poe2"].text())
 
         # History tab: provider -> cards, filters
         rec = {"key": "poe1:x:Currency:div", "name": "Divine Orb", "game": "poe1",

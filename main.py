@@ -334,6 +334,7 @@ class NinjaAlertController(QObject):
             "scenarios": len(self._cfg.scenarios),
             "poller_states": dict(self._poller_states),
             "worker_stats": stats,
+            "enabled": {g: self._cfg.game_cfg(g).enabled for g in ("poe1", "poe2")},
             "last_detail": self._last_detail,
             "leagues": dict(self._current_league),
         }
@@ -623,7 +624,12 @@ class NinjaAlertController(QObject):
             self._tray.setToolTip(f"NinjaAlert — monitoring "
                                   f"({robust} robust + {basic} basic items)")
         if self._settings is not None:
-            self._settings.set_state(aggregate, f"{game}: {self._last_detail}")
+            if self._cfg.game_cfg(game).enabled:
+                # a disabled game must not write its state into the header —
+                # the aggregate describes the games that actually run
+                self._settings.set_state(aggregate, f"{game}: {self._last_detail}")
+            else:
+                self._settings.set_state(aggregate)
 
     def _aggregate_state(self) -> str:
         states = list(self._poller_states.values()) or ["starting"]
