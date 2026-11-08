@@ -364,6 +364,8 @@ def test_advanced() -> None:
             history.append(tick("k1", price, t0 + i * step))
         history.append(tick("k1", 140.0, t0 + 60 * step))  # +40% spike
         replayed = analyzer2.warm_start(history[:-1])
+        check("warm start: ready_keys published", "k1" in analyzer2.ready_keys,
+              str(sorted(analyzer2.ready_keys)))
         snap = Snapshot(game="poe1", category="poe1:x:Currency", league="Allflame",
                         ts=t0 + 60 * step, source="documented",
                         ticks=(history[-1],))
@@ -374,17 +376,42 @@ def test_advanced() -> None:
         check("robust z: phase label present", anoms and anoms[0].phase in
               ("Launch", "Stabilization", "Mature", "Decay"))
 
+        # ---- 3b. config hot-reload must reach the phase model ------------
+        z_before = analyzer2.phase.z_threshold(0.0)
+        cfg2 = DetectorCfg()
+        cfg2.z0 += 2.0                    # 5.0 -> 7.0
+        cfg2.fast_h_min += 6.0            # 4 -> 10
+        analyzer2.cfg = cfg2
+        check("hot-reload: analyzer.cfg swapped", analyzer2.cfg is cfg2)
+        check("hot-reload: phase z* follows z0",
+              abs(analyzer2.phase.z_threshold(0.0) - z_before - 2.0) < 1e-9,
+              f"{analyzer2.phase.z_threshold(0.0):.3f}")
+        check("hot-reload: phase half-lives follow",
+              analyzer2.phase.half_lives(0.0) == (cfg2.fast_h_min, cfg2.slow_h_min),
+              str(analyzer2.phase.half_lives(0.0)))
+
         # ---- 4. governor token bucket + digest ---------------------------
         gov_cfg = Alerts()
         gov_cfg.bucket_capacity = 3
         gov = AlertGovernor(gov_cfg)
-        anoms8 = []
-        for i in range(8):
-            a = anoms[0] if i == 0 else anoms[0]
-            anoms8.append(a)
+        import dataclasses
+        anoms8 = [dataclasses.replace(anoms[0], key=f"k{i}", name=f"T{i}")
+                  for i in range(8)]      # 8 distinct items: bucket + digest path
         shown, digest = gov.decide(anoms8)
         check("governor: bucket admits 3", len(shown) <= 3, str(len(shown)))
         check("governor: digest folds the rest", digest is not None and digest.count == 8 - len(shown))
+
+        # ---- 4b. per-batch dedup: one alert per item key -----------------
+        gov2 = AlertGovernor(gov_cfg)
+        dup = dataclasses.replace(anoms[0])   # same key, same priority
+        shown2, digest2 = gov2.decide([dup, dup, dup])
+        check("governor: per-batch key dedup", len(shown2) == 1 and digest2 is None,
+              f"shown={len(shown2)} digest={digest2.count if digest2 else None}")
+        weak = dataclasses.replace(anoms[0], key="dup-key", priority=anoms[0].priority - 1.0)
+        stronger = dataclasses.replace(anoms[0], key="dup-key")
+        shown3, _ = gov2.decide([weak, stronger, weak])
+        check("governor: dedup keeps highest priority",
+              len(shown3) == 1 and shown3[0] is stronger)
 
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
