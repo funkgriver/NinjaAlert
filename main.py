@@ -39,7 +39,8 @@ from dataclasses import replace as dc_replace
 from poller import PollWorker
 from ui_overlay import ToastManager
 from ui_settings import SettingsWindow
-from webhook import AlertJournal, WebhookSender, confirm_record, format_alert_text
+from webhook import (AlertJournal, WebhookSender, attach_confirms, confirm_record,
+                     format_alert_text)
 
 log = logging.getLogger("ninjaalert.main")
 
@@ -295,7 +296,8 @@ class NinjaAlertController(QObject):
             self._settings = SettingsWindow(self._cfg)
             self._settings.setWindowIcon(load_app_icon())
             self._settings.set_status_provider(self._status_snapshot)
-            self._settings.set_history_source(self._history_snapshot)
+            self._settings.set_history_source(self._history_snapshot,
+                                              lambda: self._journal.revision())
             self._settings.settings_saved.connect(self._on_settings_saved)
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)
@@ -308,14 +310,15 @@ class NinjaAlertController(QObject):
     _settings: Optional[SettingsWindow] = None
 
     def _history_snapshot(self, limit: int = 200) -> list:
-        """Alert history for the History tab: journal tail, icons enriched for
-        records saved before the journal carried icon urls."""
+        """Alert history for the History tab: journal tail with confirmation
+        outcomes paired onto their alerts, icons enriched, confirm markers
+        dropped (they render as badges on the alert cards, not as cards)."""
         try:
-            recs = self._journal.read_recent(limit)
+            recs = self._journal.read_recent(limit * 2)   # confirms share the tail window
         except Exception:
             log.exception("history read failed")
             return []
-        recs = [r for r in recs if not r.get("type")]   # confirm markers are not alerts
+        recs = attach_confirms(recs)[-limit:]
         for r in recs:
             key = r.get("key")
             if not r.get("icon") and key and key in self._icon_map:

@@ -62,7 +62,9 @@ gitignored and never committed; `config.example.json` documents the full schema.
 - **History** — every alert that fired, rendered as read-only replicas of the push
   toasts (icon, accent price line, meta) straight from `alerts.jsonl`: filter by
   name/game/label, auto-refresh every 5 s, click a card to open the item on
-  poe.ninja — nothing is lost when a popup was missed.
+  poe.ninja — nothing is lost when a popup was missed. After the confirmation
+  re-scan grades a move, the card wears its outcome badge: ✓ held N% (green),
+  ✗ reverted (red) or – gone (gray).
 - **Readable verdicts** — labels are translated to human statuses everywhere:
   `SUSPECT` → ⚠ Manipulation likely, `AMBIGUOUS` → 🤔 Worth a look,
   `ORGANIC` → ✅ Organic move, scenarios → 🎯 Your scenario.
