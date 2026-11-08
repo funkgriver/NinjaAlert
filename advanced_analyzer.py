@@ -618,30 +618,67 @@ class HistoryStore:
     The explicit ``idx_ticks_ts`` index serves the ``WHERE ts >= ?`` range scans
     (load_since / prune); warm start itself replays full rows, so aggregation
     is deliberately kept in SQL-free Python where per-item EMA state is built.
+
+    Size contract (files must not bloat over a <=4-month league):
+      * ``append`` stores price CHANGES and delist markers only - the engine
+        skips unchanged ticks anyway (C8), so repeats carry no information;
+      * hourly ``prune`` enforces the retention window, ``maintain`` truncates
+        the WAL and hands freed pages back (incremental vacuum);
+      * ``clear`` wipes everything on league rollover - history is
+        league-scoped and a fresh VACUUM reclaims the file.
     """
 
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self._last_raw: Dict[str, Tuple[float, Optional[float], Optional[float], float]] = {}
         self._con = sqlite3.connect(str(path), check_same_thread=False)
         self._con.execute("PRAGMA journal_mode=WAL")
         self._con.execute("PRAGMA synchronous=NORMAL")
         self._con.execute("PRAGMA busy_timeout=5000")
         self._con.execute("PRAGMA cache_size=-65536")     # 64 MB page cache
         self._con.execute("PRAGMA mmap_size=134217728")   # 128 MB memory-mapped I/O
+        legacy = int(self._con.execute("PRAGMA auto_vacuum").fetchone()[0]) == 0
+        if legacy:
+            # activates after the one-shot VACUUM below (new DBs get it directly)
+            self._con.execute("PRAGMA auto_vacuum=INCREMENTAL")
         self._con.execute(
             "CREATE TABLE IF NOT EXISTS ticks (key TEXT, ts REAL, name TEXT, category TEXT, "
             "price REAL, volume REAL, listings REAL, aux REAL, PRIMARY KEY (key, ts))")
         # the implicit PK index leads with `key`, so time-range queries need their own
         self._con.execute("CREATE INDEX IF NOT EXISTS idx_ticks_ts ON ticks(ts)")
         self._con.commit()
+        if legacy:
+            try:
+                self._con.execute("VACUUM")            # one-time: reclaim old bloat
+                self._con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                log.info("history store upgraded to incremental vacuum (%s)", path.name)
+            except sqlite3.Error as exc:
+                log.info("store vacuum deferred: %s", exc)
 
     def append(self, ticks: Iterable[ItemTick]) -> None:
-        rows = [(t.key, t.ts, t.name, t.category, t.price, t.volume,
-                 t.listings, t.aux) for t in ticks]
-        with self._lock:
-            self._con.executemany("INSERT OR IGNORE INTO ticks VALUES (?,?,?,?,?,?,?,?)", rows)
-            self._con.commit()
+        """Store changes only: a tick equal to the item's last stored tick
+        (price, volume, listings) is a repeat - the engine skips it (C8) and
+        no consumer ever needed it. Delist markers (price 0) always go in."""
+        rows = []
+        for t in ticks:
+            if t.price <= 0:
+                rows.append((t.key, t.ts, t.name, t.category, t.price,
+                             t.volume, t.listings, t.aux))
+                self._last_raw.pop(t.key, None)
+                continue
+            last = self._last_raw.get(t.key)
+            if (last is not None and last[0] == t.price
+                    and last[1] == t.volume and last[2] == t.listings):
+                continue
+            rows.append((t.key, t.ts, t.name, t.category, t.price,
+                         t.volume, t.listings, t.aux))
+            self._last_raw[t.key] = (t.price, t.volume, t.listings, t.ts)
+        if rows:
+            with self._lock:
+                self._con.executemany("INSERT OR IGNORE INTO ticks VALUES (?,?,?,?,?,?,?,?)",
+                                      rows)
+                self._con.commit()
 
     def load_since(self, since_ts: float, max_rows: Optional[int] = None) -> List[ItemTick]:
         """Materialized variant of iter_since (bounded when max_rows is given)."""
@@ -683,7 +720,37 @@ class HistoryStore:
     def prune(self, older_than_ts: float) -> None:
         with self._lock:
             self._con.execute("DELETE FROM ticks WHERE ts < ?", (older_than_ts,))
+            stale = [k for k, v in self._last_raw.items() if v[3] < older_than_ts]
+            for k in stale:
+                del self._last_raw[k]
             self._con.commit()
+
+    def maintain(self) -> None:
+        """Keep sidecar files tight: truncate the WAL and hand freed pages back
+        to the OS (incremental vacuum; no-op while auto_vacuum is inactive)."""
+        with self._lock:
+            try:
+                self._con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self._con.execute("PRAGMA incremental_vacuum(8192)")
+            except sqlite3.Error as exc:
+                log.debug("store maintain skipped: %s", exc)
+
+    def clear(self) -> int:
+        """League-scoped wipe: drop every stored tick and reclaim the file.
+        Called on league rollover / manual league switch - history never
+        crosses a league, so the store is bounded by the league's lifetime."""
+        with self._lock:
+            n = int(self._con.execute("SELECT COUNT(*) FROM ticks").fetchone()[0])
+            self._con.execute("DELETE FROM ticks")
+            self._last_raw.clear()
+            self._con.commit()
+        try:
+            with self._lock:
+                self._con.execute("VACUUM")
+                self._con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error as exc:
+            log.debug("store vacuum skipped: %s", exc)
+        return n
 
     def close(self) -> None:
         with self._lock:
@@ -797,6 +864,7 @@ class AnalysisPipeline:
             dropped = self.analyzer.prune_states(cutoff)
             if dropped:
                 log.info("pruned %d stale item baselines", dropped)
+            self.store.maintain()                  # truncate WAL, release freed pages
             self._last_prune = time.time()
 
     def handle(self, snap: Snapshot,

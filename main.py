@@ -179,6 +179,7 @@ class NinjaAlertController(QObject):
 
         base = app_dir()
         self._journal = AlertJournal(os.path.join(base, "alerts.jsonl"))
+        self._journal.rotate_if_large()            # keep the journal size-bounded
         self._webhook = WebhookSender(lambda: self._cfg)
         self._toasts = ToastManager(lambda: self._cfg, base)
 
@@ -404,6 +405,7 @@ class NinjaAlertController(QObject):
                 log.info("league changed for %s: %s -> %s; resetting engines",
                          game, self._meta_league[game], meta.league)
                 self._worker.reset_game(game)
+                self._journal.rotate()             # journal is league-scoped too
             self._meta_league[game] = meta.league
 
             self._resolve_confirms(meta, quotes)
@@ -566,6 +568,7 @@ class NinjaAlertController(QObject):
             except Exception:
                 log.warning("could not persist leagues_seen", exc_info=True)
             self._worker.reset_game(game)
+            self._journal.rotate()                 # journal is league-scoped too
             self._tray.showMessage(
                 "New league detected",
                 f"{game}: {current} — baselines reseeded from scratch.",
