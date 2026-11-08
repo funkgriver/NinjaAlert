@@ -671,12 +671,8 @@ class DigestOverlay(QWidget):
 
     def _row_price(self, item) -> str:
         try:
-            from api_client import FetchMeta
-            primary = "divine" if self._game == "poe2" else "chaos"
-            secondary = "chaos" if self._game == "poe2" else "divine"
-            meta = FetchMeta(game=self._game, league=self._league, category="digest",
-                             source="exchange", primary=primary, secondary=secondary,
-                             rates={})
+            from api_client import price_meta
+            meta = price_meta(self._game, self._league, category="digest")
             arrow = "↑" if item.direction >= 0 else "↓"
             pct = f"{item.pct:+.1f}%" if item.pct else ""
             return (f"{arrow} {format_price(item.prev_price, meta, self._price_display)}"
