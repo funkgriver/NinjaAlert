@@ -103,7 +103,21 @@ class DetectorCfg:
     min_history: int = 24
     mad_floor: float = 0.0025
     min_log_move: float = 0.02
+    # empirical alert-rate cap: pick the category z* so raw (pre-governor)
+    # alerts stay near this target; the phase model remains the lower bound
+    target_alerts_per_category_per_day: float = 20.0
+    # shrink a young item's MAD toward the category's typical |return| with
+    # weight n/(n+k); 0 disables
+    mad_shrink_k: float = 30.0
     liquidity_l0: float = 20.0
+    # exchange quotes carry no listings: volume/(volume+V0) is their liquidity
+    # weight (0 disables, w_l=1)
+    liquidity_v0: float = 200.0
+    # a delist (listingCount < 1) boosts the manipulation feature for this long
+    delist_window_hours: float = 6.0
+    # time-of-day volatility seasonality: divide returns by the learned
+    # 4x6h-UTC bucket scale (measured 4x spread on real history)
+    tod_seasonality: bool = True
     max_gap_hours: float = 72.0
     # ---- confirmation / classification (spec sections 3-4) -----------------
     crossover_confirm: float = 0.75

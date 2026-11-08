@@ -364,6 +364,8 @@ def test_advanced() -> None:
             history.append(tick("k1", price, t0 + i * step))
         history.append(tick("k1", 140.0, t0 + 60 * step))  # +40% spike
         replayed = analyzer2.warm_start(history[:-1])
+        check("warm start: ready_keys published", "k1" in analyzer2.ready_keys,
+              str(sorted(analyzer2.ready_keys)))
         snap = Snapshot(game="poe1", category="poe1:x:Currency", league="Allflame",
                         ts=t0 + 60 * step, source="documented",
                         ticks=(history[-1],))
@@ -374,17 +376,383 @@ def test_advanced() -> None:
         check("robust z: phase label present", anoms and anoms[0].phase in
               ("Launch", "Stabilization", "Mature", "Decay"))
 
+        # ---- 3b. config hot-reload must reach the phase model ------------
+        z_before = analyzer2.phase.z_threshold(0.0)
+        cfg2 = DetectorCfg()
+        cfg2.z0 += 2.0                    # 5.0 -> 7.0
+        cfg2.fast_h_min += 6.0            # 4 -> 10
+        analyzer2.cfg = cfg2
+        check("hot-reload: analyzer.cfg swapped", analyzer2.cfg is cfg2)
+        check("hot-reload: phase z* follows z0",
+              abs(analyzer2.phase.z_threshold(0.0) - z_before - 2.0) < 1e-9,
+              f"{analyzer2.phase.z_threshold(0.0):.3f}")
+        check("hot-reload: phase half-lives follow",
+              analyzer2.phase.half_lives(0.0) == (cfg2.fast_h_min, cfg2.slow_h_min),
+              str(analyzer2.phase.half_lives(0.0)))
+
         # ---- 4. governor token bucket + digest ---------------------------
         gov_cfg = Alerts()
         gov_cfg.bucket_capacity = 3
         gov = AlertGovernor(gov_cfg)
-        anoms8 = []
-        for i in range(8):
-            a = anoms[0] if i == 0 else anoms[0]
-            anoms8.append(a)
+        import dataclasses
+        anoms8 = [dataclasses.replace(anoms[0], key=f"k{i}", name=f"T{i}")
+                  for i in range(8)]      # 8 distinct items: bucket + digest path
         shown, digest = gov.decide(anoms8)
         check("governor: bucket admits 3", len(shown) <= 3, str(len(shown)))
         check("governor: digest folds the rest", digest is not None and digest.count == 8 - len(shown))
+        check("digest: items carry the folded rows",
+              digest is not None and len(digest.items) == digest.count
+              and digest.items[0].key.startswith("k")
+              and digest.items[0].prev_price > 0,
+              f"items={len(digest.items) if digest else 0}")
+        gov3 = AlertGovernor(gov_cfg)
+        many = [dataclasses.replace(anoms[0], key=f"m{i}", name=f"M{i}")
+                for i in range(20)]
+        _, dg20 = gov3.decide(many)
+        check("digest: payload capped at 12 rows",
+              dg20 is not None and dg20.count == 17 and len(dg20.items) == 12,
+              f"count={dg20.count if dg20 else 0}, "
+              f"items={len(dg20.items) if dg20 else 0}")
+
+        # ---- 4b. per-batch dedup: one alert per item key -----------------
+        gov2 = AlertGovernor(gov_cfg)
+        dup = dataclasses.replace(anoms[0])   # same key, same priority
+        shown2, digest2 = gov2.decide([dup, dup, dup])
+        check("governor: per-batch key dedup", len(shown2) == 1 and digest2 is None,
+              f"shown={len(shown2)} digest={digest2.count if digest2 else None}")
+        weak = dataclasses.replace(anoms[0], key="dup-key", priority=anoms[0].priority - 1.0)
+        stronger = dataclasses.replace(anoms[0], key="dup-key")
+        shown3, _ = gov2.decide([weak, stronger, weak])
+        check("governor: dedup keeps highest priority",
+              len(shown3) == 1 and shown3[0] is stronger)
+
+        # ---- 4c. empirical z* caps raw alerts on heavy tails (B3) --------
+        import math
+        import random
+
+        rng = random.Random(20261108)
+
+        def t3() -> float:            # Student-t(3), stdlib: Z / sqrt(V/3)
+            v = sum(rng.gauss(0.0, 1.0) ** 2 for _ in range(3))
+            return rng.gauss(0.0, 1.0) / math.sqrt(v / 3.0)
+
+        cfgt = DetectorCfg()
+        cfgt.target_alerts_per_category_per_day = 20.0
+        ant = AnomalyAnalyzer(cfgt, lambda g: "")
+        snap_ts0 = 5_000_000.0
+        items = [f"poe1:x:Currency:itm{i}" for i in range(200)]
+        prices = {k: 10.0 for k in items}
+
+        def hourly(price_fn, n_snaps, start_idx):
+            alerts = 0
+            for i in range(start_idx, start_idx + n_snaps):
+                ts = snap_ts0 + i * 3600.0
+                ticks = tuple(
+                    ItemTick(key=k, name=k, category="poe1:x:Currency",
+                             price=(prices.__setitem__(k, max(1e-6, price_fn(prices[k])))
+                                    or prices[k]),
+                             volume=None, listings=None, aux=None, ts=ts)
+                    for k in items)
+                alerts += len(ant.process(Snapshot(
+                    game="poe1", category="poe1:x:Currency", league="", ts=ts,
+                    source="documented", ticks=ticks)))
+            return alerts
+
+        hourly(lambda p: p * math.exp(t3() * 0.01), 30, 0)     # warm-up: baselines + pool
+        measured = hourly(lambda p: p * math.exp(t3() * 0.01), 96, 30)
+        rate = measured / 4.0                                   # 4 days, hourly polls
+        check("B3: t(3) raw rate within 2x of target (209/day phase-only -> 20.8/day capped)",
+              10.0 <= rate <= 40.0, f"{rate:.1f}/day ({measured} alerts / 4d)")
+
+        # ---- 4d. young baselines shrink to the category scale (B4) -------
+        cfgb = DetectorCfg()
+        cfgb.target_alerts_per_category_per_day = 0.0    # isolate from B3
+
+        def build_blend(k):
+            cfgb.mad_shrink_k = k
+            ab = AnomalyAnalyzer(cfgb, lambda g: "")
+            ts0 = 6_000_000.0
+
+            def filler_snap(i):      # phase 1: build the category return scale
+                ticks = tuple(
+                    ItemTick(key=f"poe1:x:Currency:f{j}", name=f"f{j}",
+                             category="poe1:x:Currency",
+                             price=10.0 * (1 + (1 if (i + j) % 2 else -1)
+                                           * (0.01 + 0.01 * ((i + 3 * j) % 4) / 3.0)),
+                             volume=None, listings=None, aux=None, ts=ts0 + i * 3600.0)
+                    for j in range(20))
+                return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                                ts=ts0 + i * 3600.0, source="documented", ticks=ticks)
+
+            def x_snap(i, p):        # phase 2: X alone (no B6 median, no breadth)
+                return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                                ts=ts0 + 100 + i * 3600.0, source="documented",
+                                ticks=(ItemTick(key="poe1:x:Currency:X", name="X",
+                                                category="poe1:x:Currency", price=p,
+                                                volume=None, listings=None, aux=None,
+                                                ts=ts0 + 100 + i * 3600.0),))
+
+            for i in range(25):
+                ab.process(filler_snap(i))
+            for i in range(25):      # X wiggles +-0.05%: real changes, tiny own MAD
+                ab.process(x_snap(i, 5.0 * (1.0 + 0.0005 * math.sin(i))))
+            return len(ab.process(x_snap(25, 5.0 * 1.03)))
+
+        no_blend = build_blend(0.0)
+        blended = build_blend(30.0)
+        check("B4: flat item's 3% jump alerts without shrinkage, quiet with it",
+              no_blend >= 1 and blended == 0, f"k=0: {no_blend}, k=30: {blended}")
+
+        # ---- 4e. minimum-step moves must not cross z* (B5) ----------------
+        cfgs = DetectorCfg()
+        cfgs.target_alerts_per_category_per_day = 0.0
+        asz = AnomalyAnalyzer(cfgs, lambda g: "")
+        ts0 = 7_000_000.0
+
+        def cheap_snap(i, p):
+            return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                            ts=ts0 + i * 3600.0, source="documented",
+                            ticks=(ItemTick(key="poe1:x:Currency:cheap", name="C",
+                                            category="poe1:x:Currency", price=p,
+                                            volume=None, listings=None, aux=None,
+                                            ts=ts0 + i * 3600.0),))
+
+        # learn the min step by alternating hourly, then one step after a
+        # 2-minute gap (confirmation re-scan pattern) - the floor must absorb it
+        for i in range(25):
+            asz.process(cheap_snap(i, 0.0505 if i % 2 else 0.05))
+        step_anoms = asz.process(cheap_snap(24 + 2.0 / 60.0, 0.051))
+        real_anoms = asz.process(cheap_snap(24 + 2.0 / 60.0 + 1.0, 0.0657))
+        check("B5: min-step move over a short gap stays quiet", not step_anoms,
+              str([round(a.z_adj, 2) for a in step_anoms]))
+        check("B5: genuine move after step-quantized prices still alerts",
+              len(real_anoms) == 1, str([round(a.z_adj, 2) for a in real_anoms]))
+
+        # ---- 4f. category-wide shift -> one market event (B6) -------------
+        cfgm = DetectorCfg()
+        cfgm.target_alerts_per_category_per_day = 0.0
+        amk = AnomalyAnalyzer(cfgm, lambda g: "")
+        ts0 = 8_000_000.0
+        mk_items = [f"poe1:x:Currency:m{i}" for i in range(12)]
+
+        def mk_snap(i, shift=1.0):
+            ticks = tuple(
+                ItemTick(key=k, name=k, category="poe1:x:Currency",
+                         price=10.0 * shift * (1.0 + 0.002 * ((i + n) % 5 - 2)),
+                         volume=None, listings=None, aux=None, ts=ts0 + i * 3600.0)
+                for n, k in enumerate(mk_items))
+            return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                            ts=ts0 + i * 3600.0, source="documented", ticks=ticks)
+
+        for i in range(25):
+            amk.process(mk_snap(i))
+        market = amk.process(mk_snap(25, shift=1.05))          # whole category +5%
+        check("B6: 5% category-wide shift yields exactly one market event",
+              len(market) == 1 and market[0].key.endswith("#market"),
+              str([(a.key, round(a.pct, 1)) for a in market]))
+        revert = amk.process(mk_snap(26))                      # -5% reversal
+        check("B6: the reversal is one market event too, not N alerts",
+              len(revert) == 1 and revert[0].key.endswith("#market"),
+              str([(a.key, round(a.pct, 1)) for a in revert]))
+        quiet = amk.process(mk_snap(27))                       # stable again
+        check("B6: stable snapshot stays quiet (no #market residue)",
+              not quiet, str([a.key for a in quiet]))
+
+        # ---- 4g. exchange liquidity weight follows volume (B7) ------------
+        cfgv = DetectorCfg()
+        av = AnomalyAnalyzer(cfgv, lambda g: "")
+        stv = av._fresh(ItemTick(key="k", name="k", category="c", price=10.0,
+                                 volume=1000.0, listings=None, aux=None, ts=0.0))
+        mv = av._advance(stv, ItemTick(key="k", name="k", category="c", price=10.5,
+                                       volume=100.0, listings=None, aux=None, ts=3600.0),
+                         12.0, 72.0)
+        thin = av._advance(stv, ItemTick(key="k", name="k", category="c", price=11.0,
+                                         volume=5.0, listings=None, aux=None, ts=7200.0),
+                           12.0, 72.0)
+        check("B7: exchange w_l follows volume (damps thin markets)",
+              mv is not None and thin is not None
+              and abs(mv.w_l - 100.0 / (100.0 + cfgv.liquidity_v0)) < 1e-9
+              and thin.w_l < mv.w_l < 1.0,
+              f"w_l(vol=100)={mv.w_l:.3f}, w_l(vol=5)={thin.w_l:.3f}")
+
+        # ---- 4h. unchanged ticks skip the engine, reach the store (C8) ----
+        cfgu = DetectorCfg()
+        au = AnomalyAnalyzer(cfgu, lambda g: "")
+
+        def utick(p, ts, v=None, l=None):
+            return ItemTick(key="u", name="u", category="c", price=p,
+                            volume=v, listings=l, aux=None, ts=ts)
+
+        stu = au._fresh(utick(10.0, 0.0, v=100.0, l=50.0))
+        r1 = au._advance(stu, utick(10.0, 900.0, v=100.0, l=50.0), 12.0, 72.0)
+        r2 = au._advance(stu, utick(10.0, 1800.0, v=120.0, l=50.0), 12.0, 72.0)
+        r3 = au._advance(stu, utick(10.5, 2700.0, v=120.0, l=50.0), 12.0, 72.0)
+        check("C8: fully unchanged tick skipped, volume/price changes are not",
+              r1 is None and r2 is not None and r3 is not None and len(stu.rt) == 2
+              and r2.r == 0.0 and abs(r3.r - math.log(1.05)) < 1e-9,
+              f"rt={ [round(x, 4) for x in stu.rt] }")
+
+        with tempfile.TemporaryDirectory() as td2:
+            pp = AnalysisPipeline(DetectorCfg(), Alerts(), lambda g: "",
+                                  Path(td2) / "h.sqlite3")
+            tsb = time.time() - 600.0
+            ticks = (utick(10.0, tsb, v=100.0, l=50.0),
+                     utick(10.0, tsb + 900.0, v=100.0, l=50.0),      # unchanged
+                     utick(10.001, tsb + 1800.0, v=100.0, l=50.0))
+            pp.handle(Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                               ts=tsb + 1800.0, source="documented", ticks=ticks))
+            zero_rt = [x for x in pp.analyzer._states["u"].rt if x == 0.0]
+            check("C8: store keeps every change, engine window has no zero returns",
+                  pp.store.count() == 2 and not zero_rt,
+                  f"store={pp.store.count()}, zero_rt={len(zero_rt)}")
+            pp.close()
+
+        # ---- 4i. confirmation re-scan plumbing (C9) -----------------------
+        from webhook import confirm_record
+        ref = {"ref_ts": 100.0, "alert_price": 110.0, "prev_price": 100.0,
+               "game": "poe1", "league": "L", "cat_id": "Currency"}
+        rec_held = confirm_record("k", ref, 108.0, 200.0)     # 80% of the move kept
+        rec_rev = confirm_record("k", ref, 101.0, 200.0)      # 10% kept
+        rec_gone = confirm_record("k", ref, None, 200.0)      # vanished
+        check("C9: confirm_record grades held/reverted/gone",
+              rec_held["held"] and abs(rec_held["share"] - 0.8) < 1e-9
+              and not rec_rev["held"] and rec_rev["share"] == 0.1
+              and not rec_gone["held"] and rec_gone["share"] is None
+              and rec_gone["type"] == "confirm",
+              f"{rec_held['share']}/{rec_rev['share']}/{rec_gone['share']}")
+
+        from poller import PollWorker
+        pw = PollWorker(object(), Config(), "poe1")
+        pw.wake_soon(60.0, categories={"Currency"})
+        pw.wake_soon(60.0, categories={"Fragment"})
+        check("C9: poller merges re-scan categories across alerts",
+              pw._wake_cats == {"Currency", "Fragment"}, str(sorted(pw._wake_cats)))
+
+        # ---- 4j. vanished items become a buyout feature (C10) -------------
+        from types import SimpleNamespace
+        from api_client import NinjaApiClient
+        cl = NinjaApiClient()
+        meta_q, quotes = cl._parse_item("poe1", "L", SimpleNamespace(id="UniqueArmour"),
+                                        {"lines": [
+                                            {"name": "Vanished", "chaosValue": 12.0,
+                                             "listingCount": 0},
+                                            {"name": "Live", "chaosValue": 5.0,
+                                             "listingCount": 7},
+                                            {"name": "NoCount", "chaosValue": 3.0},
+                                        ]})
+        check("C10: parser marks zero-listing lines delisted, keeps live ones",
+              len(quotes) == 3 and quotes[0].delisted and quotes[0].price == 0.0
+              and not quotes[1].delisted and not quotes[2].delisted,
+              str([(q.name, q.price, q.delisted) for q in quotes]))
+        del_ticks = ticks_from_quotes(quotes, 1_000.0)
+        check("C10: delisted quote travels as a zero-price tick",
+              len(del_ticks) == 3 and del_ticks[0].price == 0.0
+              and del_ticks[0].listings == 0.0, str(del_ticks[:1]))
+
+        ad = AnomalyAnalyzer(DetectorCfg(), lambda g: "")
+        tsk = [ItemTick(key="k", name="k", category="c", price=10.0, volume=None,
+                        listings=30.0, aux=None, ts=100.0 + i * 3600.0)
+               for i in range(25)]
+        ad.warm_start(tsk)
+        ad.process(Snapshot(game="poe1", category="c", league="",
+                            ts=100.0 + 25 * 3600.0, source="documented",
+                            ticks=(ItemTick(key="k", name="k", category="c", price=0.0,
+                                            volume=None, listings=0.0, aux=None,
+                                            ts=100.0 + 25 * 3600.0),)))
+        check("C10: disappearance recorded, baseline untouched",
+              "k" in ad._disappeared and ad._states["k"].last_price == 10.0,
+              str(ad._disappeared))
+        m = ad._advance(ad._states["k"],
+                        ItemTick(key="k", name="k", category="c", price=11.0, volume=None,
+                                 listings=2.0, aux=None, ts=100.0 + 26 * 3600.0),
+                        12.0, 72.0)
+        check("C10: reappearance after delist raises the manipulation feature",
+              m is not None and m.redelisted and ad._features(m, None)[2] == 1.0,
+              f"redelisted={getattr(m, 'redelisted', None)}")
+
+        # ---- 7b. symmetric supply-pressure feature on drops (D13) ---------
+        m_drop_flood = metrics(0.9, 1.0, 1.5, 0.0, True, r=-0.1)   # listings flood, price falls
+        m_drop_vanish = metrics(0.9, 1.0, 0.5, 0.0, True, r=-0.1)  # listings vanish, price falls
+        f_flood = an._features(m_drop_flood, None)[2]
+        f_vanish = an._features(m_drop_vanish, None)[2]
+        check("D13: f3 fires on supply flooding a drop, not on vanishing supply",
+              f_flood == 1.0 and f_vanish == 0.0, f"flood={f_flood}, vanish={f_vanish}")
+
+        # ---- 7c. priority ranks by absolute move and volume (D12) ---------
+        from advanced_analyzer import alert_priority
+        check("D12: priority ignores price level, grows with move size and volume",
+              alert_priority(50.0, 1.0, 0.0) > alert_priority(9.0, 1.0, 0.0)
+              and alert_priority(9.0, 5.0, 0.0) > alert_priority(9.0, 1.0, 0.0)
+              and alert_priority(9.0, 1.0, 2.0) > alert_priority(9.0, 1.0, 0.0)
+              and alert_priority(500.0, 1.0, 0.0) > alert_priority(9.0, 1.0, 0.0) * 2.0,
+              f"base={alert_priority(9.0, 1, 0):.2f} big={alert_priority(50, 1, 0):.2f} "
+              f"rvol={alert_priority(9, 5, 0):.2f}")
+
+        # ---- 7d. calibration labels from measured outcomes (D11) ----------
+        from calibration import collect_training_rows, forward_index, outcome_label
+        cfgd = DetectorCfg()
+        ts00 = 12_000_000.0
+
+        def tt(key, price, i):
+            return ItemTick(key=key, name=key, category="poe1:x:Currency", price=price,
+                            volume=None, listings=None, aux=None, ts=ts00 + i * 900.0)
+
+        ticks_d = [tt("poe1:x:Currency:A", 100.0 * (1 + 0.0005 * math.sin(i)), i)
+                   for i in range(30)]
+        ticks_d.append(tt("poe1:x:Currency:A", 150.0, 30))           # pump
+        ticks_d.append(tt("poe1:x:Currency:A", 100.0, 31))           # dump back
+        ticks_d += [tt("poe1:x:Currency:A", 100.0 * (1 + 0.0005 * math.sin(i)), i)
+                    for i in range(40, 70)]                          # flat beyond +6h
+        climb = [100.0 * (1.03 ** i) for i in range(30)]
+        ticks_d += [tt("poe1:x:Currency:B", climb[i], i) for i in range(30)]
+        ticks_d += [tt("poe1:x:Currency:B", climb[-1] * (1 + 0.0005 * math.sin(i)), i)
+                    for i in range(30, 70)]                          # hold beyond +6h
+
+        rows_d = collect_training_rows(cfgd, lambda g: "", ticks_d)
+        xs_d, ys_d = outcome_label(rows_d, forward_index(ticks_d), cfgd)
+        check("D11: reverted pump labeled fake(1), held moves labeled real(0)",
+              ys_d.count(1) == 1 and ys_d.count(0) >= 5,
+              f"{ys_d.count(1)} fake / {ys_d.count(0)} held of {len(ys_d)}")
+
+        # ---- 7e. time-of-day volatility seasonality (D14) -----------------
+        import time as _time
+        cfgw = DetectorCfg()
+        aw = AnomalyAnalyzer(cfgw, lambda g: "")
+        ts_w0 = 1_760_000_000.0
+
+        def jitter(h):
+            return 0.002 if 18 <= h % 24 < 24 else 0.01   # quiet nights, active days
+
+        for i in range(900):                              # learn the buckets
+            ts = ts_w0 + i * 3600.0
+            h = _time.gmtime(ts).tm_hour
+            for k_i, key in enumerate(("w1", "w2")):
+                sign = 1 if (i + k_i) % 2 else -1
+                aw.process(Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                                    ts=ts, source="documented",
+                                    ticks=(ItemTick(key=key, name=key,
+                                                    category="poe1:x:Currency",
+                                                    price=10.0 * (1 + sign * jitter(h)),
+                                                    volume=None, listings=None, aux=None,
+                                                    ts=ts),)))
+        last_ts = ts_w0 + 899 * 3600.0
+
+        def final_tick(key, hour_target, mult):
+            base = last_ts + 3600.0
+            ts = base + ((hour_target - _time.gmtime(base).tm_hour) % 24) * 3600.0
+            return ts, ItemTick(key=key, name=key, category="poe1:x:Currency",
+                                price=10.0 * mult, volume=None, listings=None,
+                                aux=None, ts=ts)
+
+        ts_n, t_n = final_tick("w1", 20, 1.02)            # quiet night bucket
+        ts_d, t_d = final_tick("w2", 2, 1.02)             # active day bucket
+        mx = aw._advance(aw._states["w1"], t_n, 12.0, 72.0)
+        my = aw._advance(aw._states["w2"], t_d, 12.0, 72.0)
+        check("D14: same move scores higher in the quiet bucket",
+              mx is not None and my is not None and mx.z_adj > my.z_adj
+              and aw._season(ts_n, ts_n) < 1.0 <= aw._season(ts_d, ts_d),
+              f"z_night={mx.z_adj:.2f} z_day={my.z_adj:.2f} "
+              f"s_night={aw._season(ts_n, ts_n):.2f} s_day={aw._season(ts_d, ts_d):.2f}")
 
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
@@ -489,6 +857,45 @@ def test_hardening() -> None:
             check("sqlite: basic-mode ingest prunes", len(rows) == 1 and rows[0].key == "new",
                   str([r.key for r in rows]))
             pl.close()
+
+        # ---- file size bounds (files must not bloat over a league) --------
+        import os
+        from webhook import AlertJournal, JOURNAL_MAX_BYTES
+        check("files: journal cap is bounded", JOURNAL_MAX_BYTES <= 8 * 1024 * 1024,
+              f"{JOURNAL_MAX_BYTES} bytes")
+        with tempfile.TemporaryDirectory() as td4:
+            jpath = os.path.join(td4, "alerts.jsonl")
+            j = AlertJournal(jpath)
+            for i in range(5):
+                j.append({"i": i, "text": "x" * 60})
+            check("files: rotate_if_large no-op below cap",
+                  j.rotate_if_large(1024 * 1024) is False and os.path.exists(jpath))
+            check("files: rotate folds journal into .old",
+                  j.rotate() is True and os.path.exists(jpath + ".old")
+                  and not os.path.exists(jpath))
+            j.append({"i": 99, "text": "y" * 100})
+            check("files: oversized journal rotates on cap",
+                  j.rotate_if_large(50) is True and os.path.exists(jpath + ".old"))
+
+        with tempfile.TemporaryDirectory() as td5:
+            st2 = HistoryStore(Path(td5) / "h5.sqlite3")
+            tk = [ItemTick(key="k", name="k", category="c", price=10.0, volume=None,
+                           listings=5.0, aux=None, ts=t0 + i * 900.0) for i in range(3)]
+            tk.append(ItemTick(key="k", name="k", category="c", price=10.5, volume=None,
+                               listings=5.0, aux=None, ts=t0 + 3 * 900.0))
+            tk.append(ItemTick(key="k", name="k", category="c", price=0.0, volume=None,
+                               listings=0.0, aux=None, ts=t0 + 4 * 900.0))
+            st2.append(tk)
+            check("files: store keeps changes and delists, not repeats",
+                  st2.count() == 3, str(st2.count()))
+            st2.prune(t0 + 2.5 * 900.0)            # retention window drops old rows
+            st2.maintain()
+            check("files: maintain keeps wal truncated", st2.count() == 2)
+            st2.clear()
+            pages = int(st2._con.execute("PRAGMA page_count").fetchone()[0])
+            check("files: league wipe empties and shrinks the store",
+                  st2.count() == 0 and pages < 100, f"pages={pages}")
+            st2.close()
 
         # ---- api transport ----------------------------------------------------
         class FakeResp:
@@ -642,11 +1049,12 @@ def test_hardening() -> None:
               s is not None and abs(s - 0.9) < 1e-9 and j > 0.99, f"{s} {o} {j:.3f}")
 
         replay = [ItemTick(key="poe1:x:Currency:z", name="Z", category="poe1:x:Currency",
-                           price=100.0, volume=None, listings=50.0, aux=None,
-                           ts=t0 + i * 900.0) for i in range(40)]
+                           price=100.0 * (1.0 + 0.002 * ((i % 5) - 2)), volume=None,
+                           listings=50.0, aux=None, ts=t0 + i * 900.0)
+                  for i in range(40)]        # every tick is a real change (C8 skips repeats)
         samples = collect_training_rows(DetectorCfg(), lambda g: "", replay)
         check("calib: replay collects ready rows", len(samples) >= 10, str(len(samples)))
-        feats, manip = samples[-1]
+        feats, manip = samples[-1][0], samples[-1][1]   # rows carry key/ts/price/r too (D11)
         check("calib: sample features normalized",
               len(feats) == 6 and all(0.0 <= f <= 1.0 for f in feats) and 0.0 <= manip <= 1.0,
               f"{feats} {manip:.3f}")
@@ -883,6 +1291,37 @@ def test_qt() -> None:
               str(overlay._site_url))
         check("qt: title rendered", "Divine Orb" in overlay._title.text())
 
+        # interactive digest toast (human labels, expandable, clickable rows)
+        from models import Digest, DigestItem
+        ditems = tuple(DigestItem(
+            key=f"poe1:i:UniqueArmour:det{i}:", name=f"Artifact {i}",
+            category="poe1:item:UniqueArmour", price=150.0, prev_price=100.0,
+            pct=50.0, direction=1 if i % 2 == 0 else -1,
+            label="SUSPECT" if i % 2 == 0 else "ORGANIC", priority=5.0 - i)
+            for i in range(14))
+        dgt = Digest(count=31, names=tuple(it.name for it in ditems[:4]),
+                     categories=(("poe1:item:BaseType", 31), ("poe1:item:ValdoMap", 1)),
+                     items=ditems)
+        mgr.show_digest(dgt, "poe1", "Allflame")
+        check("qt: digest overlay created", len(mgr._active) == 2)
+        dovl = mgr._active[-1]
+        check("qt: digest chips use human labels",
+              "Base Types" in dovl._chips.text() and "BaseType ×31" not in dovl._chips.text(),
+              dovl._chips.text())
+        check("qt: digest collapsed by default, all given rows render",
+              not dovl._expanded and dovl._rows_count() == 14,
+              f"expanded={dovl._expanded}, rows={dovl._rows_count()}")
+        h_collapsed = dovl.height()
+        dovl.toggle()
+        check("qt: digest expands and grows", dovl._expanded and dovl.height() > h_collapsed,
+              f"{h_collapsed} -> {dovl.height()}")
+        url0 = dovl._item_url(ditems[0])
+        check("qt: digest row url opens the item page",
+              bool(url0) and "/poe1/economy/allflame/" in url0 and "det0" in url0,
+              str(url0))
+        dovl.dismiss()
+        check("qt: digest dismissed", len(mgr._active) == 1)
+
         settings = SettingsWindow(cfg)
         saved = []
         settings.settings_saved.connect(lambda c: saved.append(c))
@@ -895,6 +1334,17 @@ def test_qt() -> None:
         # tabs + scenarios draft + live status provider
         check("qt: four tabs present", settings._tabs.count() == 4,
               str(settings._tabs.count()))
+        # main window is genuinely resizable (no fixed maximum, sane minimum)
+        from PyQt6.QtWidgets import QWidget
+        check("qt: settings window resizable",
+              settings.minimumSize().height() >= 600
+              and settings.minimumSize().width() >= 900
+              and settings.maximumSize().width() == QWidget().maximumSize().width(),
+              f"min={settings.minimumSize().width()}x{settings.minimumSize().height()}, "
+              f"maxW={settings.maximumSize().width()}")
+        check("qt: poller discovery sweeps patch day",
+              __import__("poller").SECTION_DISCOVERY_SECONDS <= 6 * 3600,
+              str(__import__("poller").SECTION_DISCOVERY_SECONDS))
         from appconfig import ScenarioCfg
         settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
                                                 metric="pct", value=5.0))
@@ -902,13 +1352,18 @@ def test_qt() -> None:
         check("qt: scenario draft listed", settings._scen_list.count() == 1)
         settings.set_status_provider(lambda: {
             "engine": "auto", "auto_calibrate": False, "scenarios": 1,
-            "poller_states": {"poe1": "waiting"}, "worker_stats": {"poe1": (7, 21)},
+            "poller_states": {"poe1": "waiting", "poe2": "disabled"},
+            "worker_stats": {"poe1": (7, 21), "poe2": (0, 0)},
+            "enabled": {"poe1": True, "poe2": False},
             "last_detail": "ok", "leagues": {"poe1": "Allflame"}})
         settings.show()
         settings._refresh_status()
         check("qt: status tab renders provider snapshot",
               "7 robust + 21 basic" in settings._live_labels["poe1"].text(),
               settings._live_labels["poe1"].text())
+        check("qt: disabled game says off, not monitoring",
+              settings._live_labels["poe2"].text().startswith("off"),
+              settings._live_labels["poe2"].text())
 
         # History tab: provider -> cards, filters
         rec = {"key": "poe1:x:Currency:div", "name": "Divine Orb", "game": "poe1",
@@ -930,6 +1385,54 @@ def test_qt() -> None:
         settings._history._search.setText("divine")
         settings._history._rebuild()
         check("qt: history search matches name", settings._history._list.count() == 1)
+
+        # confirm badges + revision-driven refresh (a full window must not freeze)
+        from ui_history import AlertHistoryCard
+        from ui_overlay import IconLoader
+        from webhook import attach_confirms
+        now_t = time.time()
+        mixed = [
+            {"type": "confirm", "key": "k1", "held": True, "share": 0.82,
+             "price": 108.0, "ref_ts": now_t - 300, "ts": now_t - 240},
+            {"key": "k1", "name": "Alpha", "game": "poe1",
+             "category": "poe1:item:UniqueArmour", "price": 100.0,
+             "prev_price": 80.0, "pct": 25.0, "ts": now_t - 300,
+             "label": "ORGANIC"},
+            {"key": "k2", "name": "Beta", "game": "poe1",
+             "category": "poe1:exchange:Currency", "price": 5.0,
+             "prev_price": 6.0, "pct": -16.7, "ts": now_t - 600,
+             "label": "AMBIGUOUS"},
+        ]
+        out = attach_confirms(mixed)
+        check("history: confirms pair with alerts, markers dropped",
+              len(out) == 2 and isinstance(out[0].get("confirm"), dict)
+              and out[0]["confirm"]["held"] is True and "confirm" not in out[1],
+              str([(r.get("name"), "confirm" in r) for r in out]))
+        card = AlertHistoryCard(out[0], IconLoader())
+        badge = AlertHistoryCard._confirm_badge(out[0])
+        check("history: card badge grades the outcome",
+              badge is not None and badge[0].startswith("✓ held") and "82" in badge[0]
+              and AlertHistoryCard._confirm_badge(out[1]) is None,
+              str(badge))
+        card.deleteLater()
+
+        hist_recs = [rec]
+        rev = [0]
+        settings.set_history_source(
+            lambda limit=200: attach_confirms(list(hist_recs)), lambda: rev[0])
+        settings._history.refresh(force=True)
+        base_count = settings._history._list.count()
+        rev[0] += 1                                   # journal grew behind a full window
+        hist_recs.insert(0, {"type": "confirm", "key": rec["key"], "held": False,
+                             "share": 0.1, "price": 90.0, "ref_ts": rec["ts"],
+                             "ts": rec["ts"] + 1})
+        settings._history.refresh()
+        check("history: revision bump refreshes a full window with badges",
+              settings._history._list.count() == base_count
+              and bool(settings._history._records)
+              and isinstance(settings._history._records[0].get("confirm"), dict)
+              and settings._history._records[0]["confirm"]["held"] is False,
+              f"count={settings._history._list.count()}")
         settings._history.deactivate()
         settings.hide()
 

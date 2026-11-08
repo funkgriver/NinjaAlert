@@ -22,6 +22,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import time
 from datetime import date
 from typing import Dict, Optional
 
@@ -38,7 +39,8 @@ from dataclasses import replace as dc_replace
 from poller import PollWorker
 from ui_overlay import ToastManager
 from ui_settings import SettingsWindow
-from webhook import AlertJournal, WebhookSender, format_alert_text
+from webhook import (AlertJournal, WebhookSender, attach_confirms, confirm_record,
+                     format_alert_text)
 
 log = logging.getLogger("ninjaalert.main")
 
@@ -178,6 +180,7 @@ class NinjaAlertController(QObject):
 
         base = app_dir()
         self._journal = AlertJournal(os.path.join(base, "alerts.jsonl"))
+        self._journal.rotate_if_large()            # keep the journal size-bounded
         self._webhook = WebhookSender(lambda: self._cfg)
         self._toasts = ToastManager(lambda: self._cfg, base)
 
@@ -185,6 +188,7 @@ class NinjaAlertController(QObject):
         self._worker: Optional[AnalysisWorker] = None
         self._icon_map: Dict[str, str] = {}
         self._meta_league: Dict[str, str] = {}       # league seen in latest meta per game
+        self._pending_confirms: Dict[str, dict] = {} # key -> alert ref awaiting re-scan (C9)
         self._current_league: Dict[str, str] = {}    # league from leagues endpoint
         self._runtime_new_leagues: set = set()       # rollovers detected while running
         self._poller_states: Dict[str, str] = {}
@@ -292,7 +296,8 @@ class NinjaAlertController(QObject):
             self._settings = SettingsWindow(self._cfg)
             self._settings.setWindowIcon(load_app_icon())
             self._settings.set_status_provider(self._status_snapshot)
-            self._settings.set_history_source(self._history_snapshot)
+            self._settings.set_history_source(self._history_snapshot,
+                                              lambda: self._journal.revision())
             self._settings.settings_saved.connect(self._on_settings_saved)
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)
@@ -305,13 +310,15 @@ class NinjaAlertController(QObject):
     _settings: Optional[SettingsWindow] = None
 
     def _history_snapshot(self, limit: int = 200) -> list:
-        """Alert history for the History tab: journal tail, icons enriched for
-        records saved before the journal carried icon urls."""
+        """Alert history for the History tab: journal tail with confirmation
+        outcomes paired onto their alerts, icons enriched, confirm markers
+        dropped (they render as badges on the alert cards, not as cards)."""
         try:
-            recs = self._journal.read_recent(limit)
+            recs = self._journal.read_recent(limit * 2)   # confirms share the tail window
         except Exception:
             log.exception("history read failed")
             return []
+        recs = attach_confirms(recs)[-limit:]
         for r in recs:
             key = r.get("key")
             if not r.get("icon") and key and key in self._icon_map:
@@ -327,6 +334,7 @@ class NinjaAlertController(QObject):
             "scenarios": len(self._cfg.scenarios),
             "poller_states": dict(self._poller_states),
             "worker_stats": stats,
+            "enabled": {g: self._cfg.game_cfg(g).enabled for g in ("poe1", "poe2")},
             "last_detail": self._last_detail,
             "leagues": dict(self._current_league),
         }
@@ -401,8 +409,10 @@ class NinjaAlertController(QObject):
                 log.info("league changed for %s: %s -> %s; resetting engines",
                          game, self._meta_league[game], meta.league)
                 self._worker.reset_game(game)
+                self._journal.rotate()             # journal is league-scoped too
             self._meta_league[game] = meta.league
 
+            self._resolve_confirms(meta, quotes)
             self._worker.submit_snapshot(game, quotes, meta)
         except Exception:
             log.exception("snapshot hand-off failed (%s)", game)
@@ -423,14 +433,41 @@ class NinjaAlertController(QObject):
                 self._dispatch_alert(annotated, meta)
             if shown and float(self._cfg.alerts.confirm_rescan_seconds) > 0:
                 # confirmation re-scan: wake this game's poller shortly to
-                # re-check the move (one early cycle, core logic untouched)
+                # re-check the moved items only - the cycle fetches just the
+                # alerted categories, not the whole game (plan item C9)
                 worker = self._pollers.get(result["game"])
                 if worker is not None:
-                    worker.wake_soon(float(self._cfg.alerts.confirm_rescan_seconds))
+                    cats = {a.key.split(":")[2] for a in shown
+                            if len(a.key.split(":")) > 2}
+                    worker.wake_soon(float(self._cfg.alerts.confirm_rescan_seconds),
+                                     categories=cats)
             if result["digest"] is not None:
                 self._toasts.show_digest(result["digest"], result["game"], meta.league)
         except Exception:
             log.exception("alert dispatch failed")
+
+    def _resolve_confirms(self, meta, quotes) -> None:
+        """A re-scanned category settles its pending confirmations: one
+        confirmation record per alerted item goes to alerts.jsonl (C9)."""
+        if not self._pending_confirms:
+            return
+        now = time.time()
+        by_key = {q.key: float(q.price) for q in quotes if q.price > 0}
+        scoped = [k for k, p in self._pending_confirms.items()
+                  if p["game"] == meta.game and p["cat_id"] == meta.category]
+        for key in scoped:
+            ref = self._pending_confirms.pop(key)
+            new_price = by_key.get(key)              # None: gone from the market
+            rec = confirm_record(key, ref, new_price, now)
+            self._journal.append(rec)
+            log.info("confirm %s: %s (share %s)", key,
+                     "held" if rec["held"] else
+                     ("gone" if rec["share"] is None else "reverted"),
+                     rec["share"])
+        stale = [k for k, p in self._pending_confirms.items() if p["due"] < now]
+        for k in stale:                              # category was never re-fetched
+            del self._pending_confirms[k]
+            log.info("confirm %s: expired unresolved", k)
 
     def _on_worker_note(self, text: str) -> None:
         log.info("engine: %s", text)
@@ -511,6 +548,14 @@ class NinjaAlertController(QObject):
         }
         self._journal.append(payload)
         self._webhook.notify(payload)
+        if float(self._cfg.alerts.confirm_rescan_seconds) > 0 and len(parts) > 2:
+            # remember the alert so the category re-scan can grade the move (C9)
+            self._pending_confirms[a.key] = {
+                "ref_ts": a.ts, "alert_price": a.price, "prev_price": a.prev_price,
+                "game": a.game, "cat_id": cat_id, "league": meta.league,
+                "due": time.time() + max(
+                    float(self._cfg.alerts.confirm_rescan_seconds) * 4.0, 1800.0),
+            }
 
     # ------------------------------------------------------------ status UI
     def _on_leagues(self, game: str, league_ids) -> None:
@@ -527,6 +572,7 @@ class NinjaAlertController(QObject):
             except Exception:
                 log.warning("could not persist leagues_seen", exc_info=True)
             self._worker.reset_game(game)
+            self._journal.rotate()                 # journal is league-scoped too
             self._tray.showMessage(
                 "New league detected",
                 f"{game}: {current} — baselines reseeded from scratch.",
@@ -578,7 +624,12 @@ class NinjaAlertController(QObject):
             self._tray.setToolTip(f"NinjaAlert — monitoring "
                                   f"({robust} robust + {basic} basic items)")
         if self._settings is not None:
-            self._settings.set_state(aggregate, f"{game}: {self._last_detail}")
+            if self._cfg.game_cfg(game).enabled:
+                # a disabled game must not write its state into the header —
+                # the aggregate describes the games that actually run
+                self._settings.set_state(aggregate, f"{game}: {self._last_detail}")
+            else:
+                self._settings.set_state(aggregate)
 
     def _aggregate_state(self) -> str:
         states = list(self._poller_states.values()) or ["starting"]

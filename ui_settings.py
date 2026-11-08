@@ -16,7 +16,7 @@ import threading
 from dataclasses import replace as dc_replace
 from typing import Callable, Dict, List, Optional
 
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QSpinBox,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -240,6 +241,17 @@ class ScenarioDialog(QDialog):
         )
 
 
+def _wrap_scroll(page: QWidget) -> QWidget:
+    """Dense tab pages live inside a scroll area: shrinking the window must
+    produce scrollbars, never a crushed layout (form rows drawn on top of
+    each other when Qt is squeezed below the page's minimum size)."""
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)
+    sa.setFrameShape(QScrollArea.Shape.NoFrame)
+    sa.setWidget(page)
+    return sa
+
+
 class SettingsWindow(QWidget):
     settings_saved = pyqtSignal(object)       # new Config
     check_now_requested = pyqtSignal()
@@ -259,7 +271,13 @@ class SettingsWindow(QWidget):
         self._scen_draft: List[ScenarioCfg] = [dc_replace(s) for s in config.scenarios]
 
         self.setWindowTitle("NinjaAlert — poe.ninja spike monitor")
-        self.setMinimumWidth(560)
+        # fully resizable main window; geometry persists across sessions
+        self.setMinimumSize(900, 620)
+        _geo = QSettings("NinjaAlert", "NinjaAlert").value("settings/geometry")
+        if isinstance(_geo, bytearray) and not self.restoreGeometry(bytes(_geo)):
+            self.resize(1100, 760)
+        elif _geo is None:
+            self.resize(1100, 760)
         self.setStyleSheet(DARK_QSS)
 
         root = QVBoxLayout(self)
@@ -478,9 +496,9 @@ class SettingsWindow(QWidget):
         form_mon.addWidget(link)
         form_mon.addStretch(1)
 
-        self._tabs.addTab(page_mon, "Monitoring")
-        self._tabs.addTab(self._build_scenarios_tab(), "Scenarios")
-        self._tabs.addTab(self._build_status_tab(), "Status")
+        self._tabs.addTab(_wrap_scroll(page_mon), "Monitoring")
+        self._tabs.addTab(_wrap_scroll(self._build_scenarios_tab()), "Scenarios")
+        self._tabs.addTab(_wrap_scroll(self._build_status_tab()), "Status")
         self._history = HistoryTab(lambda: self._cfg.alerts.price_display)
         self._tabs.addTab(self._history, "History")
         root.addWidget(self._tabs, stretch=1)
@@ -663,8 +681,9 @@ class SettingsWindow(QWidget):
     def set_status_provider(self, fn: Optional[Callable[[], dict]]) -> None:
         self._status_provider = fn
 
-    def set_history_source(self, fn: Callable[..., list]) -> None:
-        self._history.set_provider(fn)
+    def set_history_source(self, fn: Callable[..., list],
+                           rev_fn: Optional[Callable[[], int]] = None) -> None:
+        self._history.set_provider(fn, rev_fn)
 
     def _refresh_status(self) -> None:
         if self._status_provider is None:
@@ -682,14 +701,20 @@ class SettingsWindow(QWidget):
         stats = snap.get("worker_stats") or {}
         states = snap.get("poller_states") or {}
         leagues = snap.get("leagues") or {}
+        enabled = snap.get("enabled") or {}
         for game in ("poe1", "poe2"):
             lbl = self._live_labels[game]
+            if not enabled.get(game, True):
+                lbl.setText("off — disabled in Monitoring settings")
+                continue
+            state = STATE_TEXT.get(str(states.get(game, "?")),
+                                   str(states.get(game, "?")))
             if game in stats:
                 robust, basic = stats[game]
-                lbl.setText(f"{states.get(game, '?')} · {leagues.get(game, '')} · "
+                lbl.setText(f"{state} · {leagues.get(game, '')} · "
                             f"{robust} robust + {basic} basic items tracked")
             else:
-                lbl.setText(f"{states.get(game, '?')} · worker warming up")
+                lbl.setText(f"{state} · worker warming up")
         self._live_labels["detail"].setText(str(snap.get("last_detail") or "—"))
 
     def _run_checks(self, probe_api: bool) -> None:
@@ -887,5 +912,7 @@ class SettingsWindow(QWidget):
 
     # ------------------------------------------------------------- qt events
     def closeEvent(self, event) -> None:
+        QSettings("NinjaAlert", "NinjaAlert").setValue(
+            "settings/geometry", self.saveGeometry())
         event.ignore()   # close-to-tray: hide instead of quitting
         self.hide()
