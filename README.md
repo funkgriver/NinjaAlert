@@ -93,7 +93,8 @@ gitignored and never committed; `config.example.json` documents the full schema.
   % jump/volume engine covers it, so alerts start after ~3 polls even on first run.
 - **Alert budget** — ranked by priority, admitted through a token bucket (5 tokens,
   1 per 2 min); re-alerts need ≥1.5× the last priority; overflow collapses into one
-  digest popup ("+7 more moves · Scarab ×3 …").
+  interactive digest ("+7 more moves · Base Types ×3"): click it to expand the folded
+  moves (prices, verdicts), click a row to open that item on poe.ninja.
 - **Webhook** — Settings → *Webhook automation*: tick, paste any POST endpoint,
   set **Min priority** (start at 0; raise if too chatty). The full anomaly JSON
   (incl. `key`, `icon`, `source`, `details_id`) is POSTed. Rate-limited, failures

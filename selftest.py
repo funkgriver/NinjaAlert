@@ -400,6 +400,19 @@ def test_advanced() -> None:
         shown, digest = gov.decide(anoms8)
         check("governor: bucket admits 3", len(shown) <= 3, str(len(shown)))
         check("governor: digest folds the rest", digest is not None and digest.count == 8 - len(shown))
+        check("digest: items carry the folded rows",
+              digest is not None and len(digest.items) == digest.count
+              and digest.items[0].key.startswith("k")
+              and digest.items[0].prev_price > 0,
+              f"items={len(digest.items) if digest else 0}")
+        gov3 = AlertGovernor(gov_cfg)
+        many = [dataclasses.replace(anoms[0], key=f"m{i}", name=f"M{i}")
+                for i in range(20)]
+        _, dg20 = gov3.decide(many)
+        check("digest: payload capped at 12 rows",
+              dg20 is not None and dg20.count == 17 and len(dg20.items) == 12,
+              f"count={dg20.count if dg20 else 0}, "
+              f"items={len(dg20.items) if dg20 else 0}")
 
         # ---- 4b. per-batch dedup: one alert per item key -----------------
         gov2 = AlertGovernor(gov_cfg)
@@ -1238,6 +1251,37 @@ def test_qt() -> None:
               bool(overlay._site_url) and "/poe1/economy/allflame/" in overlay._site_url,
               str(overlay._site_url))
         check("qt: title rendered", "Divine Orb" in overlay._title.text())
+
+        # interactive digest toast (human labels, expandable, clickable rows)
+        from models import Digest, DigestItem
+        ditems = tuple(DigestItem(
+            key=f"poe1:i:UniqueArmour:det{i}:", name=f"Artifact {i}",
+            category="poe1:item:UniqueArmour", price=150.0, prev_price=100.0,
+            pct=50.0, direction=1 if i % 2 == 0 else -1,
+            label="SUSPECT" if i % 2 == 0 else "ORGANIC", priority=5.0 - i)
+            for i in range(14))
+        dgt = Digest(count=31, names=tuple(it.name for it in ditems[:4]),
+                     categories=(("poe1:item:BaseType", 31), ("poe1:item:ValdoMap", 1)),
+                     items=ditems)
+        mgr.show_digest(dgt, "poe1", "Allflame")
+        check("qt: digest overlay created", len(mgr._active) == 2)
+        dovl = mgr._active[-1]
+        check("qt: digest chips use human labels",
+              "Base Types" in dovl._chips.text() and "BaseType ×31" not in dovl._chips.text(),
+              dovl._chips.text())
+        check("qt: digest collapsed by default, all given rows render",
+              not dovl._expanded and dovl._rows_count() == 14,
+              f"expanded={dovl._expanded}, rows={dovl._rows_count()}")
+        h_collapsed = dovl.height()
+        dovl.toggle()
+        check("qt: digest expands and grows", dovl._expanded and dovl.height() > h_collapsed,
+              f"{h_collapsed} -> {dovl.height()}")
+        url0 = dovl._item_url(ditems[0])
+        check("qt: digest row url opens the item page",
+              bool(url0) and "/poe1/economy/allflame/" in url0 and "det0" in url0,
+              str(url0))
+        dovl.dismiss()
+        check("qt: digest dismissed", len(mgr._active) == 1)
 
         settings = SettingsWindow(cfg)
         saved = []
