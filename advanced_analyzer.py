@@ -105,9 +105,11 @@ class PhaseModel:
 
 # --------------------------------------------------------------- per-item state
 class _ItemState:
-    __slots__ = ("last_ts", "last_price", "rt", "lnaux", "ef", "es", "ev", "el", "steps")
+    __slots__ = ("last_ts", "last_price", "rt", "lnaux", "ef", "es", "ev", "el",
+                 "steps", "lv", "ll")
 
-    def __init__(self, window: int, price: float, ts: float) -> None:
+    def __init__(self, window: int, price: float, ts: float,
+                 volume: Optional[float] = None, listings: Optional[float] = None) -> None:
         lp = math.log(price)
         self.last_ts = ts
         self.last_price = price
@@ -118,6 +120,8 @@ class _ItemState:
         self.ev: Optional[float] = None                    # slow EMA of volume
         self.el: Optional[float] = None                    # slow EMA of listings
         self.steps: Deque[float] = deque(maxlen=32)        # recent nonzero price deltas
+        self.lv = volume                                   # last raw volume (C8 skip)
+        self.ll = listings                                 # last raw listings (C8 skip)
 
 
 @dataclass(slots=True)
@@ -251,6 +255,14 @@ class AnomalyAnalyzer:
         dt_h = (tick.ts - st.last_ts) / 3600.0
         if dt_h <= 0:
             return None                    # duplicate or out-of-order snapshot
+        # plan item C8: a tick where price, volume AND listings are all
+        # unchanged carries no information - feeding it drags the per-item MAD
+        # with zero returns (83.5% of real pairs!) and inflates z on the next
+        # real move. History still stores every tick (pipeline appends the
+        # snapshot before analysis); dt now spans change-to-change.
+        if (tick.price == st.last_price and tick.volume == st.lv
+                and tick.listings == st.ll):
+            return None
         dt_h = max(dt_h, 1.0 / 60.0)
 
         lp = math.log(tick.price)
@@ -324,11 +336,13 @@ class AnomalyAnalyzer:
         st.rt.append(rt)
         self._observe_rt(tick.category, abs(rt))
         st.last_ts, st.last_price = tick.ts, tick.price
+        st.lv, st.ll = tick.volume, tick.listings
         return _Metrics(ready, r, z_adj, crossover, confirmed, rvol, supply, basis, w_l,
                         med, scale)
 
     def _fresh(self, tick: ItemTick) -> _ItemState:
-        return _ItemState(self.cfg.window, tick.price, tick.ts)
+        return _ItemState(self.cfg.window, tick.price, tick.ts,
+                          volume=tick.volume, listings=tick.listings)
 
     def reset(self) -> None:
         self._states.clear()
