@@ -16,8 +16,9 @@ import threading
 from dataclasses import replace as dc_replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
+from datetime import date
 from types import SimpleNamespace
+from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -104,6 +105,7 @@ QPushButton#primaryButton { background: #2f6d4f; border-color: #41d98c; font-wei
 QPushButton#primaryButton:hover { background: #378159; }
 QPushButton#primaryButton:pressed { background: #24523a; border-color: #6ee7ae; }
 QCheckBox::indicator { width: 15px; height: 15px; }
+QLineEdit[error="true"] { border: 1px solid #e5534b; color: #ff9b8a; }
 """
 
 
@@ -921,6 +923,17 @@ class SettingsWindow(QWidget):
         gc.league = None if gc.league_auto else (self._league_combo.currentText().strip() or None)
         gc.enabled = self._monitor_check.isChecked()
         gc.league_start = self._league_start_edit.text().strip()
+        try:
+            if gc.league_start:
+                date.fromisoformat(gc.league_start)
+            self._league_start_edit.setProperty("error", False)
+        except ValueError:
+            # config sanitizes it silently later - surface the problem in the UI
+            self._league_start_edit.setProperty("error", True)
+            self._league_start_edit.setToolTip(
+                "Invalid date - use YYYY-MM-DD, or clear the field for auto mode")
+        self._league_start_edit.style().unpolish(self._league_start_edit)
+        self._league_start_edit.style().polish(self._league_start_edit)
         gc.poll_interval_minutes = float(self._interval_spin.value())
         c.network.contact = self._contact_edit.text().strip()
         c.detector.engine = self._engine_combo.currentData() or "auto"
