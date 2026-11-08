@@ -33,6 +33,8 @@ from models import Anomaly, Digest, ItemTick, Snapshot
 log = logging.getLogger("ninjaalert.advanced")
 
 EPS = 1e-9
+Z_POOL_MAX = 4096                  # recent |z_adj| samples kept per category
+Z_POOL_MIN = 200                   # samples before the empirical threshold is trusted
 
 
 # ---------------------------------------------------------------- small helpers
@@ -137,6 +139,13 @@ class AnomalyAnalyzer:
         self.ready_keys: set = set()   # keys with a completed robust baseline (auto-mode glue)
         self._weights: Optional[List[float]] = None   # calibrated override (see calibration.py)
         self._bias: Optional[float] = None
+        # heavy-tail guard: recent |z_adj| per category + snapshot cadence, so the
+        # empirical distribution can cap the raw alert rate (B3) instead of the
+        # governor filtering noise after the fact
+        self._z_pool: Dict[str, Deque[float]] = {}     # category -> recent |z_adj|
+        self._last_snap: Dict[str, float] = {}         # category -> last snapshot ts
+        self._snap_interval: Dict[str, float] = {}     # category -> EWMA poll interval (s)
+        self._snap_size: Dict[str, float] = {}         # category -> EWMA snapshot size
 
     @property
     def cfg(self):
@@ -157,6 +166,41 @@ class AnomalyAnalyzer:
         """Install refit weights (in-app auto-calibration) without touching the config."""
         self._weights = [float(w) for w in weights]
         self._bias = float(bias)
+
+    # -- empirical alert-rate cap (heavy-tail guard, plan item B3) -----------
+    def _observe_snapshot_meta(self, category: str, ts: float, n: int) -> None:
+        prev = self._last_snap.get(category)
+        if prev is not None and ts > prev:
+            dt = ts - prev
+            self._snap_interval[category] = 0.8 * self._snap_interval.get(category, dt) + 0.2 * dt
+        self._last_snap[category] = ts
+        self._snap_size[category] = 0.8 * self._snap_size.get(category, float(n)) + 0.2 * float(n)
+
+    def _observe_z(self, category: str, z_abs: float) -> None:
+        pool = self._z_pool.get(category)
+        if pool is None:
+            pool = self._z_pool[category] = deque(maxlen=Z_POOL_MAX)
+        pool.append(z_abs)
+
+    def _z_threshold_category(self, category: str) -> float:
+        """|z| quantile that caps raw alerts at ~target/day for this category.
+
+        evaluations/day = snapshot size * 86400 / poll interval, so the needed
+        tail is target / evaluations_per_day; the phase model stays the lower
+        bound (see process). Returns 0.0 until enough evidence exists.
+        """
+        c = self.cfg
+        target = getattr(c, "target_alerts_per_category_per_day", 0.0)
+        pool = self._z_pool.get(category)
+        interval = self._snap_interval.get(category)
+        size = self._snap_size.get(category)
+        if target <= 0 or not pool or len(pool) < Z_POOL_MIN or not interval or not size:
+            return 0.0
+        evals_per_day = size * 86400.0 / max(interval, 1.0)
+        tail = _clip(target / max(evals_per_day, 1.0), 1e-4, 0.5)
+        data = sorted(pool)
+        idx = min(int((1.0 - tail) * len(data)), len(data) - 1)
+        return max(0.0, data[idx])
 
     # -- one update step shared by live processing and warm start
     def _advance(self, st: _ItemState, tick: ItemTick, hf: float, hs: float) -> Optional[_Metrics]:
@@ -223,6 +267,10 @@ class AnomalyAnalyzer:
     def reset(self) -> None:
         self._states.clear()
         self.ready_keys.clear()
+        self._z_pool.clear()
+        self._last_snap.clear()
+        self._snap_interval.clear()
+        self._snap_size.clear()
 
     def warm_start(self, ticks: Iterable[ItemTick], now: Optional[float] = None) -> int:
         """Replay stored history (any order) to rebuild baselines silently."""
@@ -246,6 +294,7 @@ class AnomalyAnalyzer:
                     m = self._advance(st, tick, hf, hs)
                     if m is not None and m.ready:
                         self.ready_keys.add(tick.key)   # baseline survives a restart
+                        self._observe_z(tick.category, abs(m.z_adj))
             except (TypeError, ValueError, OverflowError):
                 continue                   # corrupt stored row must not kill warm start
             count += 1
@@ -264,9 +313,12 @@ class AnomalyAnalyzer:
     def process(self, snap: Snapshot, collect: Optional[list] = None) -> List[Anomaly]:
         c = self.cfg
         t_days = self.phase.league_day(snap.ts, self._league_start(snap.game))
-        z_star = self.phase.z_threshold(t_days)
         hf, hs = self.phase.half_lives(t_days)
         phase = self.phase.label(t_days)
+        self._observe_snapshot_meta(snap.category, snap.ts, len(snap.ticks))
+        # heavy-tail guard: the empirical category cap lifts z* above the phase
+        # model whenever the raw |z| distribution demands it (B3)
+        z_star = max(self.phase.z_threshold(t_days), self._z_threshold_category(snap.category))
 
         rows: List[Tuple[ItemTick, float, _Metrics]] = []
         for tick in snap.ticks:
@@ -294,6 +346,7 @@ class AnomalyAnalyzer:
 
         out: List[Anomaly] = []
         for tick, prev, m in rows:
+            self._observe_z(snap.category, abs(m.z_adj))   # feed the empirical pool first
             direction = 1 if m.z_adj > 0 else -1
             breadth: Optional[float] = None
             if peers >= c.breadth_min_peers:

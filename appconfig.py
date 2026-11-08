@@ -103,6 +103,9 @@ class DetectorCfg:
     min_history: int = 24
     mad_floor: float = 0.0025
     min_log_move: float = 0.02
+    # empirical alert-rate cap: pick the category z* so raw (pre-governor)
+    # alerts stay near this target; the phase model remains the lower bound
+    target_alerts_per_category_per_day: float = 20.0
     liquidity_l0: float = 20.0
     max_gap_hours: float = 72.0
     # ---- confirmation / classification (spec sections 3-4) -----------------
