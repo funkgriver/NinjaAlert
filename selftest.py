@@ -460,26 +460,30 @@ def test_advanced() -> None:
             ab = AnomalyAnalyzer(cfgb, lambda g: "")
             ts0 = 6_000_000.0
 
-            def snap_at(i, x_price=5.0):
-                ticks = []
-                for j in range(20):      # healthy fillers: category |rt| ~ 2-4%
-                    key = f"poe1:x:Currency:f{j}"
-                    sign = 1 if (i + j) % 2 else -1
-                    amp = 0.01 + 0.01 * ((i + 3 * j) % 4) / 3.0
-                    p = 10.0 * (1.0 + sign * amp)
-                    ticks.append(ItemTick(key=key, name=key, category="poe1:x:Currency",
-                                          price=p, volume=None, listings=None, aux=None,
-                                          ts=ts0 + i * 3600.0))
-                ticks.append(ItemTick(key="poe1:x:Currency:X", name="X",
-                                      category="poe1:x:Currency", price=x_price,
-                                      volume=None, listings=None, aux=None,
-                                      ts=ts0 + i * 3600.0))
+            def filler_snap(i):      # phase 1: build the category return scale
+                ticks = tuple(
+                    ItemTick(key=f"poe1:x:Currency:f{j}", name=f"f{j}",
+                             category="poe1:x:Currency",
+                             price=10.0 * (1 + (1 if (i + j) % 2 else -1)
+                                           * (0.01 + 0.01 * ((i + 3 * j) % 4) / 3.0)),
+                             volume=None, listings=None, aux=None, ts=ts0 + i * 3600.0)
+                    for j in range(20))
                 return Snapshot(game="poe1", category="poe1:x:Currency", league="",
-                                ts=ts0 + i * 3600.0, source="documented", ticks=tuple(ticks))
+                                ts=ts0 + i * 3600.0, source="documented", ticks=ticks)
 
-            for i in range(25):          # X stays flat: its own MAD collapses to 0
-                ab.process(snap_at(i))
-            return len(ab.process(snap_at(25, x_price=5.0 * 1.03)))
+            def x_snap(i, p):        # phase 2: X alone (no B6 median, no breadth)
+                return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                                ts=ts0 + 100 + i * 3600.0, source="documented",
+                                ticks=(ItemTick(key="poe1:x:Currency:X", name="X",
+                                                category="poe1:x:Currency", price=p,
+                                                volume=None, listings=None, aux=None,
+                                                ts=ts0 + 100 + i * 3600.0),))
+
+            for i in range(25):
+                ab.process(filler_snap(i))
+            for i in range(25):      # X wiggles +-0.05%: real changes, tiny own MAD
+                ab.process(x_snap(i, 5.0 * (1.0 + 0.0005 * math.sin(i))))
+            return len(ab.process(x_snap(25, 5.0 * 1.03)))
 
         no_blend = build_blend(0.0)
         blended = build_blend(30.0)
@@ -500,14 +504,13 @@ def test_advanced() -> None:
                                             volume=None, listings=None, aux=None,
                                             ts=ts0 + i * 3600.0),))
 
-        # learn the item's minimum step (3 x 0.0005), then go quiet for 21 snaps
-        for i, p in enumerate((0.05, 0.0505, 0.051, 0.0515)):
-            asz.process(cheap_snap(i, p))
-        for i in range(4, 25):
-            asz.process(cheap_snap(i, 0.0515))
-        step_anoms = asz.process(cheap_snap(25, 0.052))    # one more minimum step
-        real_anoms = asz.process(cheap_snap(26, 0.067))    # +30% genuine move
-        check("B5: repeated min-step move stays quiet", not step_anoms,
+        # learn the min step by alternating hourly, then one step after a
+        # 2-minute gap (confirmation re-scan pattern) - the floor must absorb it
+        for i in range(25):
+            asz.process(cheap_snap(i, 0.0505 if i % 2 else 0.05))
+        step_anoms = asz.process(cheap_snap(24 + 2.0 / 60.0, 0.051))
+        real_anoms = asz.process(cheap_snap(24 + 2.0 / 60.0 + 1.0, 0.0657))
+        check("B5: min-step move over a short gap stays quiet", not step_anoms,
               str([round(a.z_adj, 2) for a in step_anoms]))
         check("B5: genuine move after step-quantized prices still alerts",
               len(real_anoms) == 1, str([round(a.z_adj, 2) for a in real_anoms]))
@@ -558,6 +561,38 @@ def test_advanced() -> None:
               and abs(mv.w_l - 100.0 / (100.0 + cfgv.liquidity_v0)) < 1e-9
               and thin.w_l < mv.w_l < 1.0,
               f"w_l(vol=100)={mv.w_l:.3f}, w_l(vol=5)={thin.w_l:.3f}")
+
+        # ---- 4h. unchanged ticks skip the engine, reach the store (C8) ----
+        cfgu = DetectorCfg()
+        au = AnomalyAnalyzer(cfgu, lambda g: "")
+
+        def utick(p, ts, v=None, l=None):
+            return ItemTick(key="u", name="u", category="c", price=p,
+                            volume=v, listings=l, aux=None, ts=ts)
+
+        stu = au._fresh(utick(10.0, 0.0, v=100.0, l=50.0))
+        r1 = au._advance(stu, utick(10.0, 900.0, v=100.0, l=50.0), 12.0, 72.0)
+        r2 = au._advance(stu, utick(10.0, 1800.0, v=120.0, l=50.0), 12.0, 72.0)
+        r3 = au._advance(stu, utick(10.5, 2700.0, v=120.0, l=50.0), 12.0, 72.0)
+        check("C8: fully unchanged tick skipped, volume/price changes are not",
+              r1 is None and r2 is not None and r3 is not None and len(stu.rt) == 2
+              and r2.r == 0.0 and abs(r3.r - math.log(1.05)) < 1e-9,
+              f"rt={ [round(x, 4) for x in stu.rt] }")
+
+        with tempfile.TemporaryDirectory() as td2:
+            pp = AnalysisPipeline(DetectorCfg(), Alerts(), lambda g: "",
+                                  Path(td2) / "h.sqlite3")
+            tsb = time.time() - 600.0
+            ticks = (utick(10.0, tsb, v=100.0, l=50.0),
+                     utick(10.0, tsb + 900.0, v=100.0, l=50.0),      # unchanged
+                     utick(10.001, tsb + 1800.0, v=100.0, l=50.0))
+            pp.handle(Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                               ts=tsb + 1800.0, source="documented", ticks=ticks))
+            zero_rt = [x for x in pp.analyzer._states["u"].rt if x == 0.0]
+            check("C8: store keeps every tick, engine window has no zero returns",
+                  pp.store.count() == 3 and not zero_rt,
+                  f"store={pp.store.count()}, zero_rt={len(zero_rt)}")
+            pp.close()
 
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
@@ -815,8 +850,9 @@ def test_hardening() -> None:
               s is not None and abs(s - 0.9) < 1e-9 and j > 0.99, f"{s} {o} {j:.3f}")
 
         replay = [ItemTick(key="poe1:x:Currency:z", name="Z", category="poe1:x:Currency",
-                           price=100.0, volume=None, listings=50.0, aux=None,
-                           ts=t0 + i * 900.0) for i in range(40)]
+                           price=100.0 * (1.0 + 0.002 * ((i % 5) - 2)), volume=None,
+                           listings=50.0, aux=None, ts=t0 + i * 900.0)
+                  for i in range(40)]        # every tick is a real change (C8 skips repeats)
         samples = collect_training_rows(DetectorCfg(), lambda g: "", replay)
         check("calib: replay collects ready rows", len(samples) >= 10, str(len(samples)))
         feats, manip = samples[-1]
