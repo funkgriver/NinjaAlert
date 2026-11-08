@@ -21,6 +21,7 @@ import logging
 import queue
 import threading
 import time
+from dataclasses import fields
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -191,18 +192,23 @@ class AnalysisWorker(QThread):
                             "digest": digest, "scenario_hits": scenario_hits})
 
     def _handle_config(self, pipelines, basics, cfg) -> None:
-        prev_engine = self._cfg.detector.engine
+        prev = self._cfg
+        prev_engine = prev.detector.engine
         self._cfg = cfg
         for game in GAMES:
             basics[game].update_thresholds(cfg.thresholds)
             pipeline = pipelines.get(game)
             if pipeline is None:
                 continue
+            pipeline.cfg = cfg.detector            # prune/retention window
             pipeline.governor.cfg = cfg.alerts
-            pipeline.analyzer.cfg = cfg.detector
+            pipeline.analyzer.cfg = cfg.detector   # property: rebinds phase.c too
             if cfg.detector.engine != prev_engine and cfg.detector.engine == "auto":
                 # switching back to auto: robust baselines may need reseeding
                 pipeline.analyzer.reset()
+        changed = [f.name for f in fields(cfg.detector)
+                   if getattr(prev.detector, f.name, None) != getattr(cfg.detector, f.name)]
+        log.info("config applied (detector: %s)", ", ".join(changed) or "no changes")
 
     def _handle_reset(self, pipelines, basics, game: str) -> None:
         pipeline = pipelines.get(game)
