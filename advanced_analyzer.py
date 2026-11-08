@@ -38,6 +38,9 @@ Z_POOL_MIN = 200                   # samples before the empirical threshold is t
 CAT_RT_MAX = 2048                  # recent |rt| samples kept per category (B4 shrinkage)
 MARKET_MIN_ROWS = 5                # min ready items before a market component is separable
 MARKET_COHERENCE = 0.6             # share of same-sign returns for a drift to count
+TOD_POOL_MAX = 2048                # recent |rt| samples per time-of-day bucket (D14)
+TOD_MIN = 200                      # samples before a bucket factor is trusted
+TOD_RECALC_EVERY = 256             # recompute bucket factors every N samples
 
 
 # ---------------------------------------------------------------- small helpers
@@ -171,6 +174,11 @@ class AnomalyAnalyzer:
         self._snap_interval: Dict[str, float] = {}     # category -> EWMA poll interval (s)
         self._snap_size: Dict[str, float] = {}         # category -> EWMA snapshot size
         self._disappeared: Dict[str, float] = {}       # key -> last delist ts (C10)
+        # plan item D14: learned volatility scale per 4x6h UTC bucket
+        self._tod_pool: Tuple[Deque[float], ...] = tuple(
+            deque(maxlen=TOD_POOL_MAX) for _ in range(4))
+        self._tod_n = [0, 0, 0, 0]
+        self._tod_cache: Tuple[int, Tuple[float, float, float, float]] = (-1, (1.0, 1.0, 1.0, 1.0))
 
     @property
     def cfg(self):
@@ -244,6 +252,42 @@ class AnomalyAnalyzer:
             self._disappeared[key] = ts
             log.debug("item vanished from market: %s", key)
 
+    # -- time-of-day seasonality (plan item D14) ------------------------------
+    def _observe_tod(self, ts_end: float, rt_abs: float) -> None:
+        b = int(time.gmtime(ts_end).tm_hour // 6) % 4
+        self._tod_pool[b].append(rt_abs)
+        self._tod_n[b] += 1
+
+    def _tod_factors(self) -> Tuple[float, float, float, float]:
+        """Volatility scale of each 6h UTC bucket relative to their median."""
+        key = sum(self._tod_n) // TOD_RECALC_EVERY
+        if key == self._tod_cache[0]:
+            return self._tod_cache[1]
+        meds = []
+        for pool in self._tod_pool:
+            vals = [x for x in pool if x > 0.0]
+            meds.append(_median(vals) if len(vals) >= TOD_MIN else 0.0)
+        if any(m <= 0.0 for m in meds):
+            factors = (1.0, 1.0, 1.0, 1.0)
+        else:
+            ref = _median(meds)
+            factors = tuple(_clip(m / ref, 0.4, 2.5) for m in meds)
+        self._tod_cache = (key, factors)
+        return factors
+
+    def _season(self, ts_start: float, ts_end: float) -> float:
+        """Multiplier for a return spanning [ts_start, ts_end]; 1.0 without
+        enough evidence or when disabled. A quiet-bucket move is relatively
+        more significant than the same move during active hours."""
+        if not getattr(self.cfg, "tod_seasonality", False):
+            return 1.0
+        f = self._tod_factors()
+        if f == (1.0, 1.0, 1.0, 1.0):
+            return 1.0
+        b0 = int(time.gmtime(ts_start).tm_hour // 6) % 4
+        b1 = int(time.gmtime(ts_end).tm_hour // 6) % 4
+        return _clip(0.5 * (f[b0] + f[b1]), 0.4, 2.5)
+
     def _category_mad(self, category: str) -> Optional[float]:
         """Typical |unit-time return| of the category (median of nonzero |rt|)."""
         pool = self._cat_rt.get(category)
@@ -288,9 +332,12 @@ class AnomalyAnalyzer:
 
         lp = math.log(tick.price)
         r = lp - math.log(st.last_price)
-        rt = r / math.sqrt(dt_h)           # scaled to a one-hour unit
-        if not (math.isfinite(lp) and math.isfinite(rt)):
+        rt_raw = r / math.sqrt(dt_h)       # scaled to a one-hour unit
+        if not (math.isfinite(lp) and math.isfinite(rt_raw)):
             return None                    # non-finite input must not poison the baseline
+        if getattr(c, "tod_seasonality", False):
+            self._observe_tod(tick.ts, abs(rt_raw))
+        rt = rt_raw / self._season(st.last_ts, tick.ts)
 
         ready = len(st.rt) >= c.min_history
         med = 0.0
@@ -380,6 +427,10 @@ class AnomalyAnalyzer:
         self._last_snap.clear()
         self._snap_interval.clear()
         self._snap_size.clear()
+        for pool in self._tod_pool:
+            pool.clear()
+        self._tod_n = [0, 0, 0, 0]
+        self._tod_cache = (-1, (1.0, 1.0, 1.0, 1.0))
 
     def warm_start(self, ticks: Iterable[ItemTick], now: Optional[float] = None) -> int:
         """Replay stored history (any order) to rebuild baselines silently."""
