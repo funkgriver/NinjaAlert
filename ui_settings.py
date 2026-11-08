@@ -91,11 +91,17 @@ QPushButton {
     background: #232a36; border: 1px solid #313b4d; border-radius: 6px;
     padding: 6px 12px; color: #e6e8ee;
 }
-QPushButton:hover { background: #2b3444; }
-QPushButton:disabled { color: #6b7280; }
+QPushButton:hover { background: #2b3444; border-color: #43506a; }
+QPushButton:pressed { background: #1a2029; border-color: #41d98c; color: #ffffff; }
+QPushButton:checked { background: #2f6d4f; border-color: #41d98c; color: #ffffff; }
+QPushButton:disabled { color: #6b7280; background: #1b2029; border-color: #2a3140; }
 QPushButton#gameButton { padding: 7px 14px; font-weight: 600; }
+QPushButton#gameButton:hover { background: #35513f; }
+QPushButton#gameButton:pressed { background: #24523a; }
 QPushButton#gameButton:checked { background: #2f6d4f; border-color: #41d98c; color: #ffffff; }
 QPushButton#primaryButton { background: #2f6d4f; border-color: #41d98c; font-weight: 600; }
+QPushButton#primaryButton:hover { background: #378159; }
+QPushButton#primaryButton:pressed { background: #24523a; border-color: #6ee7ae; }
 QCheckBox::indicator { width: 15px; height: 15px; }
 """
 
@@ -502,6 +508,10 @@ class SettingsWindow(QWidget):
         self._history = HistoryTab(lambda: self._cfg.alerts.price_display)
         self._tabs.addTab(self._history, "History")
         root.addWidget(self._tabs, stretch=1)
+
+        # buttons answer the mouse: pointing hand everywhere
+        for btn in self.findChildren(QPushButton):
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(3000)

@@ -1345,6 +1345,13 @@ def test_qt() -> None:
         check("qt: poller discovery sweeps patch day",
               __import__("poller").SECTION_DISCOVERY_SECONDS <= 6 * 3600,
               str(__import__("poller").SECTION_DISCOVERY_SECONDS))
+        from ui_settings import DARK_QSS
+        from PyQt6.QtCore import Qt as _QtQ
+        check("qt: buttons have hover/pressed feedback states",
+              "QPushButton:hover" in DARK_QSS and "QPushButton:pressed" in DARK_QSS
+              and "QPushButton#primaryButton:pressed" in DARK_QSS
+              and "QPushButton:checked" in DARK_QSS
+              and settings._save_btn.cursor().shape() == _QtQ.CursorShape.PointingHandCursor)
         from appconfig import ScenarioCfg
         settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
                                                 metric="pct", value=5.0))
