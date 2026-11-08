@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -43,15 +44,24 @@ log = logging.getLogger("ninjaalert.overlay")
 TOAST_WIDTH = 360
 TOAST_HEIGHT = 100
 TOAST_GAP = 10
+DIGEST_ROW_H = 34
+DIGEST_MAX_BODY_H = 264       # expanded list viewport cap
 
 ACCENT_UP = "#41d98c"     # price spike
 ACCENT_VOL = "#e8b93e"    # listing-volume surge
 ACCENT_MUTE = "#9aa4b2"
+ACCENT_DOWN = "#e5734b"   # price drop
 
 FRIENDLY_STATUS = {
     "SUSPECT": "⚠ Manipulation likely",
     "AMBIGUOUS": "🤔 Worth a look",
     "ORGANIC": "✅ Organic move",
+}
+
+VERDICT_GLYPH = {
+    "SUSPECT": "⚠",
+    "AMBIGUOUS": "🤔",
+    "ORGANIC": "✅",
 }
 
 
@@ -443,6 +453,367 @@ class NotificationOverlay(QWidget):
         return self._user_moved
 
 
+# ------------------------------------------------------------- digest overlay
+class _DigestRow(QFrame):
+    """One clickable folded-move row: opens the poe.ninja page on click."""
+
+    clicked = pyqtSignal(str)
+
+    def __init__(self, url: Optional[str], accent: str, glyph: str,
+                 name: str, price_text: str, tooltip: str) -> None:
+        super().__init__()
+        self._url = url
+        self.setFixedHeight(DIGEST_ROW_H - 6)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(
+            "QFrame { background: rgba(255,255,255,10); border: none;"
+            " border-radius: 6px; }"
+            "QFrame:hover { background: rgba(255,255,255,22); }"
+        )
+        self.setToolTip(tooltip)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 2, 8, 2)
+        lay.setSpacing(8)
+        glyph_lbl = QLabel(glyph)
+        glyph_lbl.setStyleSheet(f"color: {accent}; font-size: 12px;")
+        glyph_lbl.setFixedWidth(18)
+        lay.addWidget(glyph_lbl)
+        name_lbl = QLabel(name)
+        name_lbl.setStyleSheet("color: #e8ebf2; font-size: 11px;")
+        name_lbl.setToolTip(name)
+        lay.addWidget(name_lbl, stretch=1)
+        price_lbl = QLabel(price_text)
+        price_lbl.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 600;")
+        lay.addWidget(price_lbl)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._url:
+            self.clicked.emit(self._url)
+
+
+class DigestOverlay(QWidget):
+    """Interactive digest: folded moves with human category labels; click the
+    card to expand the capped item list, click a row to open poe.ninja.
+    Expanding pins the toast (auto-dismiss resumes on collapse)."""
+
+    closed = pyqtSignal(object)
+    resized = pyqtSignal(object)
+
+    def __init__(self, digest, game: str, league: str, popup_seconds: float,
+                 price_display: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._digest = digest
+        self._game = game
+        self._league = league
+        self._price_display = price_display
+        self._expanded = False
+        self._drag_offset: Optional[QPoint] = None
+        self._dragging = False
+        self._user_moved = False
+        self._remaining = float(popup_seconds)
+        self._total = float(popup_seconds)
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setFixedWidth(TOAST_WIDTH)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self._card = QFrame(self)
+        self._card.setObjectName("digestCard")
+        self._card.setGeometry(0, 0, TOAST_WIDTH, 100)
+        self._card.setStyleSheet(
+            "#digestCard {"
+            " background: rgba(17, 20, 28, 243);"
+            " border: 1px solid rgba(255, 255, 255, 28);"
+            " border-radius: 10px; }"
+        )
+        root = QVBoxLayout(self._card)
+        root.setContentsMargins(12, 10, 8, 6)
+        root.setSpacing(3)
+
+        head = QHBoxLayout()
+        title_font = QFont()
+        title_font.setPointSizeF(10.0)
+        title_font.setBold(True)
+        self._title = QLabel(f"➕ {digest.count} more moves")
+        self._title.setFont(title_font)
+        self._title.setStyleSheet("color: #f2f4f8;")
+        head.addWidget(self._title, stretch=1)
+        close_btn = QToolButton()
+        close_btn.setText("✕")
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet(
+            "QToolButton { color: #9aa4b2; background: transparent; border: none;"
+            " font-size: 12px; padding: 2px 4px; }"
+            "QToolButton:hover { color: #ffffff; }"
+        )
+        close_btn.clicked.connect(self.dismiss)
+        head.addWidget(close_btn)
+        root.addLayout(head)
+
+        self._chips = QLabel()
+        self._chips.setStyleSheet(f"color: {ACCENT_VOL}; font-size: 11px; font-weight: 600;")
+        self._chips.setText(self._human_chips())
+        self._chips.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        root.addWidget(self._chips)
+
+        self._names = QLabel()
+        self._names.setStyleSheet("color: #9aa4b2; font-size: 10px;")
+        self._names.setText(self._names_preview())
+        root.addWidget(self._names)
+
+        # expandable body: one clickable row per folded move (capped payload)
+        self._body = QScrollArea()
+        self._body.setWidgetResizable(True)
+        self._body.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QWidget > QWidget { background: transparent; }"
+        )
+        body_widget = QWidget()
+        rows_lay = QVBoxLayout(body_widget)
+        rows_lay.setContentsMargins(0, 2, 0, 2)
+        rows_lay.setSpacing(3)
+        for item in digest.items:
+            url = self._item_url(item)
+            if item.key.endswith("#market"):
+                glyph, accent = "⇄", ACCENT_MUTE
+            elif item.direction >= 0:
+                glyph, accent = VERDICT_GLYPH.get(
+                    str(item.label).split("·")[0].strip(), "•"), ACCENT_UP
+            else:
+                glyph, accent = VERDICT_GLYPH.get(
+                    str(item.label).split("·")[0].strip(), "•"), ACCENT_DOWN
+            if str(item.label).startswith("SCENARIO"):
+                glyph = "🎯"
+            row = _DigestRow(url, accent, glyph, item.name, self._row_price(item),
+                             friendly_status(str(item.label)))
+            row.clicked.connect(self._open)
+            rows_lay.addWidget(row)
+        rows_lay.addStretch(1)
+        self._body.setWidget(body_widget)
+        root.addWidget(self._body)
+        self._body.setVisible(False)
+
+        self._hint = QLabel("▾ details")
+        self._hint.setStyleSheet(f"color: {ACCENT_MUTE}; font-size: 10px;")
+        root.addWidget(self._hint)
+
+        self._progress = QFrame(self._card)
+        self._progress.setFixedHeight(3)
+        self._progress.setStyleSheet(
+            f"background: {ACCENT_VOL}; border-radius: 1px; border: none;"
+        )
+        root.addWidget(self._progress)
+
+        self._collapse_h = self._card.sizeHint().height()
+        self._names_h = self._names.sizeHint().height()
+        self._relayout_self()
+
+        self._tick = QTimer(self)
+        self._tick.setInterval(60)
+        self._tick.timeout.connect(self._on_tick)
+        self._hold = QTimer(self)
+        self._hold.setSingleShot(True)
+        self._hold.setInterval(int(popup_seconds * 1000))
+        self._hold.timeout.connect(self._start_fadeout)
+        self._fade_in = QPropertyAnimation(self, b"windowOpacity")
+        self._fade_in.setDuration(150)
+        self._fade_out = QPropertyAnimation(self, b"windowOpacity")
+        self._fade_out.setDuration(280)
+        self._fade_out.finished.connect(self._finalize_close)
+
+    # ------------------------------------------------------------- content
+    def _human_chips(self) -> str:
+        parts = []
+        for cat, n in self._digest.categories[:3]:
+            cat_id = str(cat).rsplit(":", 1)[-1]
+            try:
+                label = get_cat(self._game, cat_id).label
+            except Exception:
+                label = cat_id
+            parts.append(f"{label} ×{n}")
+        more = len(self._digest.categories) - 3
+        if more > 0:
+            parts.append(f"+{more}")
+        return "  ·  ".join(parts) if parts else "alert budget reached"
+
+    def _names_preview(self) -> str:
+        meta_line = f"{self._game.upper()} · {self._league}"
+        shown = [str(n) for n in self._digest.names[:2]]
+        rest = self._digest.count - len(shown)
+        if shown and rest > 0:
+            shown.append(f"…and {rest} more")
+        line = ", ".join(shown) if shown else meta_line
+        fm = self._names.fontMetrics()
+        return fm.elidedText(f"{line}   ({meta_line})",
+                             Qt.TextElideMode.ElideRight, TOAST_WIDTH - 40)
+
+    def _row_price(self, item) -> str:
+        try:
+            from api_client import FetchMeta
+            primary = "divine" if self._game == "poe2" else "chaos"
+            secondary = "chaos" if self._game == "poe2" else "divine"
+            meta = FetchMeta(game=self._game, league=self._league, category="digest",
+                             source="exchange", primary=primary, secondary=secondary,
+                             rates={})
+            arrow = "↑" if item.direction >= 0 else "↓"
+            pct = f"{item.pct:+.1f}%" if item.pct else ""
+            return (f"{arrow} {format_price(item.prev_price, meta, self._price_display)}"
+                    f" → {format_price(item.price, meta, self._price_display)}  {pct}")
+        except Exception:
+            return f"{item.pct:+.1f}%"
+
+    def _item_url(self, item) -> Optional[str]:
+        """Best-effort poe.ninja page for one folded move (market rows open
+        the category page instead)."""
+        try:
+            game = str(item.key).split(":", 1)[0]
+            league_slug = _league_slug(self._league)
+            if str(item.key).endswith("#market"):
+                cat_id = str(item.category).rsplit(":", 1)[-1]
+                cat = get_cat(game, cat_id)
+                if league_slug and cat.slug:
+                    return f"{BASE_URL}/{game}/economy/{league_slug}/{cat.slug}"
+                return f"{BASE_URL}/{game}/economy"
+            parts = str(item.key).split(":")
+            cat_id = parts[2] if len(parts) > 2 else ""
+            details_id = parts[3] if len(parts) > 3 else ""
+            cat = get_cat(game, cat_id)
+            if league_slug and cat.slug:
+                base = f"{BASE_URL}/{game}/economy/{league_slug}/{cat.slug}"
+                if details_id and cat.source == "item":
+                    return f"{base}/{details_id}"
+                return base
+            return f"{BASE_URL}/{game}/economy"
+        except Exception:
+            return f"{BASE_URL}/{self._game}/economy"
+
+    # ------------------------------------------------------------- geometry
+    def _relayout_self(self) -> None:
+        if self._expanded:
+            need = len(self._digest.items) * DIGEST_ROW_H + 30
+            body_h = min(need, DIGEST_MAX_BODY_H)
+            self._body.setFixedHeight(body_h)
+            self._body.setVisible(True)
+            self._names.setVisible(False)
+            self._hint.setText("▴ collapse")
+            height = self._collapse_h - self._names_h + body_h
+        else:
+            self._body.setVisible(False)
+            self._names.setVisible(True)
+            self._hint.setText("▾ details")
+            height = self._collapse_h
+        self._card.setFixedHeight(height)
+        self._card.setGeometry(0, 0, TOAST_WIDTH, height)
+        self.setFixedSize(TOAST_WIDTH, height)
+        self.resized.emit(self)
+
+    def toggle(self) -> None:
+        self._expanded = not self._expanded
+        self._relayout_self()
+        if self._expanded:
+            self._hold.stop()          # expanded digest is pinned
+        elif not self._dragging:
+            self._remaining = self._total
+            self._hold.start()
+
+    def _rows_count(self) -> int:
+        lay = self._body.widget().layout()
+        return sum(1 for i in range(lay.count())
+                   if isinstance(lay.itemAt(i).widget(), _DigestRow))
+
+    # ---------------------------------------------------------------- show
+    def show_at(self, pos: QPoint, opacity: float) -> None:
+        self.move(pos)
+        self.setWindowOpacity(0.0)
+        self.show()
+        self._fade_in.stop()
+        self._fade_in.setStartValue(0.0)
+        self._fade_in.setEndValue(float(opacity))
+        self._fade_in.start()
+        self._hold.start()
+        self._tick.start()
+        self._update_progress()
+
+    # ------------------------------------------------------------ behaviors
+    def _open(self, url: str) -> None:
+        try:
+            QGuiApplication.openUrl(QUrl(url))
+        except Exception:
+            log.exception("could not open %s", url)
+
+    def _on_tick(self) -> None:
+        if self._hold.isActive():
+            self._remaining = max(0.0, self._remaining - self._tick.interval() / 1000.0)
+        self._update_progress()
+
+    def _update_progress(self) -> None:
+        frac = self._remaining / self._total if self._total > 0 else 0.0
+        width = int((TOAST_WIDTH - 22) * max(0.0, min(1.0, frac)))
+        self._progress.setFixedWidth(max(width, 2))
+
+    def _start_fadeout(self) -> None:
+        self._tick.stop()
+        self._fade_out.stop()
+        self._fade_out.setStartValue(self.windowOpacity())
+        self._fade_out.setEndValue(0.0)
+        self._fade_out.start()
+
+    def _finalize_close(self) -> None:
+        self._tick.stop()
+        self.hide()
+        self.closed.emit(self)
+        self.deleteLater()
+
+    def dismiss(self) -> None:
+        self._hold.stop()
+        self._tick.stop()
+        self._fade_out.stop()
+        self._fade_in.stop()
+        self._finalize_close()
+
+    def enterEvent(self, event) -> None:
+        self._hold.stop()
+
+    def leaveEvent(self, event) -> None:
+        if not self._dragging and not self._expanded:
+            self._remaining = self._total
+            self._hold.start()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            self._dragging = False
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            new_pos = event.globalPosition().toPoint() - self._drag_offset
+            if not self._dragging and (new_pos - self.pos()).manhattanLength() > 6:
+                self._dragging = True
+                self._user_moved = True
+            if self._dragging:
+                self.move(new_pos)
+
+    def mouseReleaseEvent(self, event) -> None:
+        was_click = self._drag_offset is not None and not self._dragging
+        self._drag_offset = None
+        self._dragging = False
+        if was_click:
+            self.toggle()
+
+    @property
+    def user_moved(self) -> bool:
+        return self._user_moved
+
+
 # ------------------------------------------------------------------ manager
 class ToastManager(QObject):
     """Shows alert popups, keeps them stacked in the configured corner."""
@@ -480,38 +851,26 @@ class ToastManager(QObject):
         overlay.show_at(self._slot_pos(len(self._active) - 1), float(cfg.overlay.opacity))
 
     def show_digest(self, digest, game: str, league: str) -> None:
-        """Amber summary line for anomalies folded by the alert budget."""
+        """Interactive amber summary for anomalies folded by the alert budget:
+        human category labels, click to expand the capped folded-move list,
+        click a row to open its poe.ninja page."""
         try:
-            from analyzer import Alert
-            from api_client import FetchMeta
-
             cfg = self._cfg_getter()
-            cats = " · ".join(f"{cat.split(':', 2)[-1]} ×{n}"
-                              for cat, n in digest.categories[:3])
-            names = ", ".join(digest.names[: digest.count and len(digest.names)])
-            meta = FetchMeta(game=game, league=league, category="digest",
-                             source="exchange", primary="chaos")
-            alert = Alert(game=game, league=league, category="digest",
-                          name=f"➕ {digest.count} more moves",
-                          old_price=0.0, new_price=0.0, pct=0.0,
-                          list_count=None, vol_ratio=None, icon=None,
-                          details_id=None, source="exchange")
             limit = int(cfg.alerts.max_popups)
             while len(self._active) >= limit and self._active:
                 oldest = self._active.pop(0)
                 oldest.dismiss()
-            overlay = NotificationOverlay(
-                alert=alert, meta=meta,
+            overlay = DigestOverlay(
+                digest=digest, game=game, league=league,
                 popup_seconds=float(cfg.alerts.popup_seconds),
-                icon_loader=self._icons, site_url=None,
-                price_text=cats or "alert budget reached",
-                meta_text=f"{names} — folded to keep the feed clean",
                 price_display=getattr(cfg.alerts, "price_display", "both"),
             )
             overlay.closed.connect(self._on_closed)
+            overlay.resized.connect(lambda _o: self._relayout())
             self._active.append(overlay)
             self._position(overlay, len(self._active) - 1)
-            overlay.show_at(self._slot_pos(len(self._active) - 1), float(cfg.overlay.opacity))
+            overlay.show_at(self._slot_pos(len(self._active) - 1),
+                            float(cfg.overlay.opacity))
         except Exception:
             log.exception("digest toast failed")
 
@@ -526,22 +885,29 @@ class ToastManager(QObject):
         self._active.clear()
 
     # ------------------------------------------------------------ placement
+    def _stack_offset(self, index: int) -> int:
+        """Vertical space taken by the overlays below/above this slot:
+        overlays have different heights (digest expands), so stack by real
+        heights instead of a fixed step."""
+        return sum(o.height() + TOAST_GAP for o in self._active[:index])
+
     def _slot_pos(self, index: int) -> QPoint:
         cfg = self._cfg_getter()
         geo = QGuiApplication.primaryScreen().availableGeometry()
         margin = int(cfg.overlay.margin)
         corner = cfg.overlay.corner
-        step = TOAST_HEIGHT + TOAST_GAP
+        below = self._stack_offset(index)
+        own_h = self._active[index].height() if index < len(self._active) else TOAST_HEIGHT
         if corner == "bottom-right":
             return QPoint(geo.right() - margin - TOAST_WIDTH,
-                          geo.bottom() - margin - TOAST_HEIGHT - index * step)
+                          geo.bottom() - margin - own_h - below)
         if corner == "bottom-left":
             return QPoint(geo.left() + margin,
-                          geo.bottom() - margin - TOAST_HEIGHT - index * step)
+                          geo.bottom() - margin - own_h - below)
         if corner == "top-right":
             return QPoint(geo.right() - margin - TOAST_WIDTH,
-                          geo.top() + margin + index * step)
-        return QPoint(geo.left() + margin, geo.top() + margin + index * step)  # top-left
+                          geo.top() + margin + below)
+        return QPoint(geo.left() + margin, geo.top() + margin + below)  # top-left
 
     def _position(self, overlay: NotificationOverlay, index: int) -> None:
         if not overlay.user_moved:

@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Deque, Dict, Iterable, List, Optional, Tuple
 
-from models import Anomaly, Digest, ItemTick, Snapshot
+from models import Anomaly, Digest, DigestItem, ItemTick, Snapshot
 
 log = logging.getLogger("ninjaalert.advanced")
 
@@ -41,6 +41,7 @@ MARKET_COHERENCE = 0.6             # share of same-sign returns for a drift to c
 TOD_POOL_MAX = 2048                # recent |rt| samples per time-of-day bucket (D14)
 TOD_MIN = 200                      # samples before a bucket factor is trusted
 TOD_RECALC_EVERY = 256             # recompute bucket factors every N samples
+DIGEST_MAX_ITEMS = 12              # rows carried in a digest toast (bounded payload)
 
 
 # ---------------------------------------------------------------- small helpers
@@ -760,7 +761,11 @@ class AlertGovernor:
             digest = Digest(
                 count=len(overflow),
                 names=tuple(a.name for a in overflow[: self.cfg.max_digest_names]),
-                categories=tuple(sorted(counts.items(), key=lambda kv: -kv[1])))
+                categories=tuple(sorted(counts.items(), key=lambda kv: -kv[1])),
+                items=tuple(DigestItem(a.key, a.name, a.category, a.price,
+                                       a.prev_price, a.pct, a.direction,
+                                       a.label, a.priority)
+                            for a in overflow[:DIGEST_MAX_ITEMS]))
         return shown, digest
 
 
