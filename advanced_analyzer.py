@@ -321,13 +321,19 @@ class AnomalyAnalyzer:
         dt_h = (tick.ts - st.last_ts) / 3600.0
         if dt_h <= 0:
             return None                    # duplicate or out-of-order snapshot
-        # plan item C8: a tick where price, volume AND listings are all
-        # unchanged carries no information - feeding it drags the per-item MAD
-        # with zero returns (83.5% of real pairs!) and inflates z on the next
-        # real move. History still stores every tick (pipeline appends the
-        # snapshot before analysis); dt now spans change-to-change.
-        if (tick.price == st.last_price and tick.volume == st.lv
-                and tick.listings == st.ll):
+        # plan item C8 (revised after prod QA): a price-unchanged tick carries
+        # no return information - feeding it dilutes the per-item MAD with zero
+        # returns (88% of real ticks!) and inflates z on the next real move.
+        # Liquidity EMAs still refresh on volume/listings-only updates; dt then
+        # spans change-to-change, which the return scaling expects.
+        if tick.price == st.last_price:
+            dt_h = max(dt_h, 1.0 / 60.0)
+            a_s0 = 1.0 - 2.0 ** (-dt_h / hs)
+            if tick.volume is not None and tick.volume >= 0:
+                st.ev = tick.volume if st.ev is None else st.ev + a_s0 * (tick.volume - st.ev)
+            if tick.listings is not None and tick.listings >= 0:
+                st.el = tick.listings if st.el is None else st.el + a_s0 * (tick.listings - st.el)
+            st.lv, st.ll = tick.volume, tick.listings
             return None
         dt_h = max(dt_h, 1.0 / 60.0)
 
@@ -620,8 +626,9 @@ class HistoryStore:
     is deliberately kept in SQL-free Python where per-item EMA state is built.
 
     Size contract (files must not bloat over a <=4-month league):
-      * ``append`` stores price CHANGES and delist markers only - the engine
-        skips unchanged ticks anyway (C8), so repeats carry no information;
+      * ``append`` stores a row when the item's PRICE changed (prod QA: 88% of
+        rows repeated the previous price via listing-count jitter); volume and
+        listings ride along on the changed row;
       * hourly ``prune`` enforces the retention window, ``maintain`` truncates
         the WAL and hands freed pages back (incremental vacuum);
       * ``clear`` wipes everything on league rollover - history is
@@ -657,9 +664,10 @@ class HistoryStore:
                 log.info("store vacuum deferred: %s", exc)
 
     def append(self, ticks: Iterable[ItemTick]) -> None:
-        """Store changes only: a tick equal to the item's last stored tick
-        (price, volume, listings) is a repeat - the engine skips it (C8) and
-        no consumer ever needed it. Delist markers (price 0) always go in."""
+        """Store price CHANGES only (prod QA: 88% of stored rows repeated the
+        previous price because listings/volume jitter every refresh). Volume
+        and listings ride along with the changed row; delist markers (price 0)
+        always go in."""
         rows = []
         for t in ticks:
             if t.price <= 0:
@@ -668,8 +676,7 @@ class HistoryStore:
                 self._last_raw.pop(t.key, None)
                 continue
             last = self._last_raw.get(t.key)
-            if (last is not None and last[0] == t.price
-                    and last[1] == t.volume and last[2] == t.listings):
+            if last is not None and last[0] == t.price:
                 continue
             rows.append((t.key, t.ts, t.name, t.category, t.price,
                          t.volume, t.listings, t.aux))
