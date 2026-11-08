@@ -62,7 +62,9 @@ def build_site_url(rec: Dict[str, Any]) -> Optional[str]:
     if not game:
         return None
     league = str(rec.get("league") or "")
-    cat_id = str(rec.get("category") or "")
+    # journal records carry the full cohort ("<game>:<source>:<type>");
+    # get_cat expects the bare category id
+    cat_id = str(rec.get("category") or "").rsplit(":", 1)[-1]
     try:
         cat = get_cat(game, cat_id)
     except Exception:
@@ -242,6 +244,15 @@ class AlertHistoryCard(QFrame):
             label.setText("")
 
     # ---------------------------------------------------------------- events
+    def mousePressEvent(self, event) -> None:
+        # accept the press so THIS widget keeps the mouse grab: otherwise the
+        # press propagates to the enclosing QListWidget/viewport and the
+        # release never comes back to us (the click "does nothing")
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
     def mouseReleaseEvent(self, event) -> None:
         if self._url and event.button() == Qt.MouseButton.LeftButton:
             try:
