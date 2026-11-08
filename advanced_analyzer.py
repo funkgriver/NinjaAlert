@@ -527,7 +527,14 @@ class AnomalyAnalyzer:
         c = self.cfg
         f1 = 1.0 - m.w_l
         f2 = _clip(1.0 - m.rvol / c.rvol_ref, 0.0, 1.0) if m.rvol is not None else c.no_volume_prior
-        f3 = _clip((1.0 - m.supply) / 0.5, 0.0, 1.0) if (m.supply is not None and m.r > 0) else 0.0
+        # plan item D13: supply pressure is symmetric - listings vanishing into
+        # a pump AND listings flooding into a dump are both synthetic pressure
+        f3 = 0.0
+        if m.supply is not None:
+            if m.r > 0:
+                f3 = _clip((1.0 - m.supply) / 0.5, 0.0, 1.0)
+            elif m.r < 0:
+                f3 = _clip((m.supply - 1.0) / 0.5, 0.0, 1.0)
         if m.redelisted and m.r > 0:
             f3 = 1.0                   # vanished supply then repriced up: buyout signal
         f4 = _clip(m.basis / c.basis_saturation, 0.0, 1.0) if m.basis is not None else 0.0
