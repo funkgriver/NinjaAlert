@@ -663,8 +663,9 @@ class SettingsWindow(QWidget):
     def set_status_provider(self, fn: Optional[Callable[[], dict]]) -> None:
         self._status_provider = fn
 
-    def set_history_source(self, fn: Callable[..., list]) -> None:
-        self._history.set_provider(fn)
+    def set_history_source(self, fn: Callable[..., list],
+                           rev_fn: Optional[Callable[[], int]] = None) -> None:
+        self._history.set_provider(fn, rev_fn)
 
     def _refresh_status(self) -> None:
         if self._status_provider is None:

@@ -1369,6 +1369,54 @@ def test_qt() -> None:
         settings._history._search.setText("divine")
         settings._history._rebuild()
         check("qt: history search matches name", settings._history._list.count() == 1)
+
+        # confirm badges + revision-driven refresh (a full window must not freeze)
+        from ui_history import AlertHistoryCard
+        from ui_overlay import IconLoader
+        from webhook import attach_confirms
+        now_t = time.time()
+        mixed = [
+            {"type": "confirm", "key": "k1", "held": True, "share": 0.82,
+             "price": 108.0, "ref_ts": now_t - 300, "ts": now_t - 240},
+            {"key": "k1", "name": "Alpha", "game": "poe1",
+             "category": "poe1:item:UniqueArmour", "price": 100.0,
+             "prev_price": 80.0, "pct": 25.0, "ts": now_t - 300,
+             "label": "ORGANIC"},
+            {"key": "k2", "name": "Beta", "game": "poe1",
+             "category": "poe1:exchange:Currency", "price": 5.0,
+             "prev_price": 6.0, "pct": -16.7, "ts": now_t - 600,
+             "label": "AMBIGUOUS"},
+        ]
+        out = attach_confirms(mixed)
+        check("history: confirms pair with alerts, markers dropped",
+              len(out) == 2 and isinstance(out[0].get("confirm"), dict)
+              and out[0]["confirm"]["held"] is True and "confirm" not in out[1],
+              str([(r.get("name"), "confirm" in r) for r in out]))
+        card = AlertHistoryCard(out[0], IconLoader())
+        badge = AlertHistoryCard._confirm_badge(out[0])
+        check("history: card badge grades the outcome",
+              badge is not None and badge[0].startswith("✓ held") and "82" in badge[0]
+              and AlertHistoryCard._confirm_badge(out[1]) is None,
+              str(badge))
+        card.deleteLater()
+
+        hist_recs = [rec]
+        rev = [0]
+        settings.set_history_source(
+            lambda limit=200: attach_confirms(list(hist_recs)), lambda: rev[0])
+        settings._history.refresh(force=True)
+        base_count = settings._history._list.count()
+        rev[0] += 1                                   # journal grew behind a full window
+        hist_recs.insert(0, {"type": "confirm", "key": rec["key"], "held": False,
+                             "share": 0.1, "price": 90.0, "ref_ts": rec["ts"],
+                             "ts": rec["ts"] + 1})
+        settings._history.refresh()
+        check("history: revision bump refreshes a full window with badges",
+              settings._history._list.count() == base_count
+              and bool(settings._history._records)
+              and isinstance(settings._history._records[0].get("confirm"), dict)
+              and settings._history._records[0]["confirm"]["held"] is False,
+              f"count={settings._history._list.count()}")
         settings._history.deactivate()
         settings.hide()
 
