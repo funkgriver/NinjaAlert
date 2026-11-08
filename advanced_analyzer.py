@@ -103,7 +103,7 @@ class PhaseModel:
 
 # --------------------------------------------------------------- per-item state
 class _ItemState:
-    __slots__ = ("last_ts", "last_price", "rt", "lnaux", "ef", "es", "ev", "el")
+    __slots__ = ("last_ts", "last_price", "rt", "lnaux", "ef", "es", "ev", "el", "steps")
 
     def __init__(self, window: int, price: float, ts: float) -> None:
         lp = math.log(price)
@@ -115,6 +115,7 @@ class _ItemState:
         self.es = lp                                       # slow EMA of ln P
         self.ev: Optional[float] = None                    # slow EMA of volume
         self.el: Optional[float] = None                    # slow EMA of listings
+        self.steps: Deque[float] = deque(maxlen=32)        # recent nonzero price deltas
 
 
 @dataclass(slots=True)
@@ -259,10 +260,21 @@ class AnomalyAnalyzer:
             med = _median(st.rt)
             mad = _median(abs(x - med) for x in st.rt)
             mad = self._blended_mad(tick.category, mad, len(st.rt))
-            scale = max(1.4826 * mad, c.mad_floor)
+            # plan item B5: a single minimum price step is quantization noise,
+            # not a signal — the scale floor rises to the one-step return learned
+            # from PRIOR steps (the current move must not set its own floor)
+            scale_floor = c.mad_floor
+            if st.steps:
+                r_step = math.log1p(min(st.steps) / tick.price) / math.sqrt(dt_h)
+                if r_step > scale_floor:
+                    scale_floor = r_step
+            scale = max(1.4826 * mad, scale_floor)
             z = (rt - med) / scale
         else:
             scale, z = c.mad_floor, 0.0
+        step = abs(tick.price - st.last_price)
+        if step > 0:
+            st.steps.append(step)
 
         listings = tick.listings
         w_l = listings / (listings + c.liquidity_l0) if listings is not None and listings >= 0 else 1.0

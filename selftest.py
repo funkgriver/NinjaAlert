@@ -486,6 +486,32 @@ def test_advanced() -> None:
         check("B4: flat item's 3% jump alerts without shrinkage, quiet with it",
               no_blend >= 1 and blended == 0, f"k=0: {no_blend}, k=30: {blended}")
 
+        # ---- 4e. minimum-step moves must not cross z* (B5) ----------------
+        cfgs = DetectorCfg()
+        cfgs.target_alerts_per_category_per_day = 0.0
+        asz = AnomalyAnalyzer(cfgs, lambda g: "")
+        ts0 = 7_000_000.0
+
+        def cheap_snap(i, p):
+            return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                            ts=ts0 + i * 3600.0, source="documented",
+                            ticks=(ItemTick(key="poe1:x:Currency:cheap", name="C",
+                                            category="poe1:x:Currency", price=p,
+                                            volume=None, listings=None, aux=None,
+                                            ts=ts0 + i * 3600.0),))
+
+        # learn the item's minimum step (3 x 0.0005), then go quiet for 21 snaps
+        for i, p in enumerate((0.05, 0.0505, 0.051, 0.0515)):
+            asz.process(cheap_snap(i, p))
+        for i in range(4, 25):
+            asz.process(cheap_snap(i, 0.0515))
+        step_anoms = asz.process(cheap_snap(25, 0.052))    # one more minimum step
+        real_anoms = asz.process(cheap_snap(26, 0.067))    # +30% genuine move
+        check("B5: repeated min-step move stays quiet", not step_anoms,
+              str([round(a.z_adj, 2) for a in step_anoms]))
+        check("B5: genuine move after step-quantized prices still alerts",
+              len(real_anoms) == 1, str([round(a.z_adj, 2) for a in real_anoms]))
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
