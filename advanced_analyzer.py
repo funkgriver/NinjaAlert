@@ -61,6 +61,16 @@ def _sigmoid(x: float) -> float:
     return e / (1.0 + e)
 
 
+def alert_priority(abs_delta: float, rvol: float, z_adj: float) -> float:
+    """Plan item D12: rank alerts by the move's absolute size (primary
+    currency: chaos/divine) and by volume - NOT by the item's price relative
+    to the category median, which made one divine item outrank any chaos move
+    regardless of significance. The z score only modulates the rank."""
+    return ((1.0 + math.log1p(max(abs_delta, 0.0)))
+            * (1.0 + math.log1p(max(rvol, 1.0)))
+            * (1.0 + max(z_adj, 0.0) / 4.0))
+
+
 # --------------------------------------------------------- league phase model
 class PhaseModel:
     """z*(t), A(t) and EMA half-lives as functions of league age t (days)."""
@@ -468,7 +478,6 @@ class AnomalyAnalyzer:
         for _, _, m in rows:               # residualize in place (B6)
             m.z_adj = (m.r - cat_med_r - m.med) / m.scale * math.sqrt(m.w_l)
 
-        median_price = _median(t.price for t in snap.ticks) or 1.0
         pos = sum(1 for _, _, m in rows if m.z_adj >= c.breadth_z)
         neg = sum(1 for _, _, m in rows if m.z_adj <= -c.breadth_z)
         peers = len(rows) - 1
@@ -489,8 +498,7 @@ class AnomalyAnalyzer:
             label = ("SUSPECT" if manip >= c.suspect_at
                      else "ORGANIC" if manip <= c.organic_at else "AMBIGUOUS")
             rv = m.rvol if m.rvol is not None else 1.0
-            priority = (abs(m.z_adj) * (1.0 + math.log1p(rv))
-                        * (1.0 + math.log1p(tick.price / median_price)))
+            priority = alert_priority(abs(tick.price - prev), rv, m.z_adj)
             out.append(Anomaly(
                 key=tick.key, name=tick.name, game=snap.game,
                 category=tick.category, ts=tick.ts,
@@ -796,8 +804,8 @@ def ticks_from_quotes(quotes, ts: float) -> List[ItemTick]:
 
 def anomaly_from_basic(alert, league: str, median_price: float = 1.0) -> Anomaly:
     """Wrap a basic delta-engine Alert as an Anomaly so both engines share one governor."""
-    rv = 1.0
-    priority = max(1.0, abs(alert.pct) / 10.0) * (1.0 + math.log1p(alert.new_price / (median_price or 1.0)))
+    rv = alert.vol_ratio if alert.vol_ratio is not None and alert.vol_ratio > 1.0 else 1.0
+    priority = alert_priority(abs(alert.new_price - alert.old_price), rv, 0.0)
     return Anomaly(
         key=alert.key, name=alert.name, game=alert.game,
         category=f"{alert.game}:{alert.source}:{alert.category}",
