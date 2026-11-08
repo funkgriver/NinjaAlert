@@ -62,7 +62,9 @@ gitignored and never committed; `config.example.json` documents the full schema.
 - **History** — every alert that fired, rendered as read-only replicas of the push
   toasts (icon, accent price line, meta) straight from `alerts.jsonl`: filter by
   name/game/label, auto-refresh every 5 s, click a card to open the item on
-  poe.ninja — nothing is lost when a popup was missed.
+  poe.ninja — nothing is lost when a popup was missed. After the confirmation
+  re-scan grades a move, the card wears its outcome badge: ✓ held N% (green),
+  ✗ reverted (red) or – gone (gray).
 - **Readable verdicts** — labels are translated to human statuses everywhere:
   `SUSPECT` → ⚠ Manipulation likely, `AMBIGUOUS` → 🤔 Worth a look,
   `ORGANIC` → ✅ Organic move, scenarios → 🎯 Your scenario.
@@ -93,7 +95,8 @@ gitignored and never committed; `config.example.json` documents the full schema.
   % jump/volume engine covers it, so alerts start after ~3 polls even on first run.
 - **Alert budget** — ranked by priority, admitted through a token bucket (5 tokens,
   1 per 2 min); re-alerts need ≥1.5× the last priority; overflow collapses into one
-  digest popup ("+7 more moves · Scarab ×3 …").
+  interactive digest ("+7 more moves · Base Types ×3"): click it to expand the folded
+  moves (prices, verdicts), click a row to open that item on poe.ninja.
 - **Webhook** — Settings → *Webhook automation*: tick, paste any POST endpoint,
   set **Min priority** (start at 0; raise if too chatty). The full anomaly JSON
   (incl. `key`, `icon`, `source`, `details_id`) is POSTed. Rate-limited, failures
@@ -103,9 +106,13 @@ gitignored and never committed; `config.example.json` documents the full schema.
 ## Analyzing
 
 - `history-poe1.sqlite3` / `history-poe2.sqlite3` (next to the exe, 14-day retention)
-  store every tick — warm start rebuilds baselines instantly after restart.
+  store every price change — warm start rebuilds baselines instantly after restart.
+  Size-bounded: repeats are not stored, the WAL is checkpointed hourly, and a league
+  rollover wipes the store (history is league-scoped, leagues live ≤ ~4 months).
 - `alerts.jsonl` — one JSON line per admitted alert (price, z_adj, RVOL, label,
-  priority, phase) — feed for refitting thresholds/weights.
+  priority, phase) — feed for refitting thresholds/weights. Rotated into
+  `alerts.jsonl.old` at 5 MB and on every league change, so it never grows past
+  ~10 MB.
 
 ```bash
 # how many alerts per label / category:

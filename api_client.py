@@ -91,6 +91,7 @@ class ItemQuote:
     spark_total_change: Optional[float] = None  # 7d trend % reported by the site
     volume: Optional[float] = None   # exchange: volumePrimaryValue; items: sample count
     aux: Optional[float] = None      # stress ratio maxVolumeRate / primaryValue
+    delisted: bool = False           # listingCount < 1: item left the market (C10)
 
 
 def format_number(v: float) -> str:
@@ -313,7 +314,15 @@ class NinjaApiClient:
                 lc = ln.get("listingCount")
                 list_count = int(lc) if isinstance(lc, (int, float)) else None
                 if list_count is not None and list_count < 1:
-                    continue            # no live listings: the price is stale
+                    # plan item C10: the item left the market - keep the fact
+                    # as a zero-price marker, never its stale price
+                    quotes.append(ItemQuote(
+                        key=f"{game}:i:{cat.id}:{details_id}:{variant or ''}",
+                        name=display, game=game, category=cat.id, source="item",
+                        price=0.0, list_count=0, icon=None,
+                        details_id=details_id or None,
+                        spark_total_change=None, volume=None, delisted=True))
+                    continue
                 spark = ln.get("sparkLine") or ln.get("sparkline") or {}
                 quotes.append(
                     ItemQuote(

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import QGuiApplication, QPixmap
@@ -90,7 +90,8 @@ def _fmt_time(ts: float) -> str:
 
 
 class AlertHistoryCard(QFrame):
-    """Read-only toast replica for one journal record."""
+    """Read-only toast replica for one journal record: click opens the item's
+    poe.ninja page; a confirmation badge shows what the move did next."""
 
     def __init__(self, rec: Dict[str, Any], icon_loader: IconLoader,
                  price_display: str = "both", parent: Optional[QWidget] = None) -> None:
@@ -104,7 +105,8 @@ class AlertHistoryCard(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(
             f"{rec.get('name')} · {rec.get('label')} · priority {rec.get('priority')}\n"
-            f"z {rec.get('z_adj')} · rvol {rec.get('rvol')} · {rec.get('key')}")
+            f"z {rec.get('z_adj')} · rvol {rec.get('rvol')} · {rec.get('key')}\n"
+            f"click — open on poe.ninja")
 
         # the card frame IS this widget: the layout follows the list width
         root = QVBoxLayout(self)
@@ -144,14 +146,39 @@ class AlertHistoryCard(QFrame):
         mid.addWidget(meta)
         content.addLayout(mid, stretch=1)
 
-        when = QLabel(_fmt_time(float(rec.get("ts") or time.time())))
+        when = QLabel(_fmt_time(float(rec.get("ts") or time.time())) + "   ↗")
         when.setObjectName("histTime")
         when.setAlignment(Qt.AlignmentFlag.AlignTop)
         when.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        content.addWidget(when)
+        right = QVBoxLayout()
+        right.setSpacing(1)
+        right.addWidget(when)
+        badge = self._confirm_badge(rec)
+        if badge is not None:
+            badge_lbl = QLabel(badge[0])
+            badge_lbl.setStyleSheet(f"color: {badge[1]}; font-size: 10px; font-weight: 700;")
+            badge_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+            badge_lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            right.addWidget(badge_lbl)
+        content.addLayout(right)
         root.addLayout(content, stretch=1)
 
     # ---------------------------------------------------------------- parts
+    @staticmethod
+    def _confirm_badge(rec: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+        """(text, color) for the confirmation outcome attached by
+        webhook.attach_confirms; None when no re-scan has graded this alert."""
+        conf = rec.get("confirm")
+        if not isinstance(conf, dict):
+            return None
+        share = conf.get("share")
+        if conf.get("price") is None and share is None:
+            return ("– gone", ACCENT_FLAT)
+        if conf.get("held"):
+            txt = "✓ held" + (f" {float(share):.0%}" if isinstance(share, (int, float)) else "")
+            return (txt, ACCENT_UP)
+        return ("✗ reverted", ACCENT_DOWN)
+
     @staticmethod
     def _accent(rec: Dict[str, Any]) -> str:
         pct = rec.get("pct")
@@ -231,6 +258,7 @@ class HistoryTab(QWidget):
         super().__init__(parent)
         self._price_display_fn = price_display_fn
         self._provider: Optional[Callable[..., List[Dict[str, Any]]]] = None
+        self._rev_fn: Optional[Callable[[], int]] = None
         self._records: List[Dict[str, Any]] = []
         self._signature: Optional[tuple] = None
         self._loader = IconLoader(self)
@@ -273,8 +301,10 @@ class HistoryTab(QWidget):
         self._timer.timeout.connect(self.refresh)
 
     # ------------------------------------------------------------- wiring
-    def set_provider(self, fn: Callable[..., List[Dict[str, Any]]]) -> None:
+    def set_provider(self, fn: Callable[..., List[Dict[str, Any]]],
+                     rev_fn: Optional[Callable[[], int]] = None) -> None:
         self._provider = fn
+        self._rev_fn = rev_fn
 
     def activate(self) -> None:
         self.refresh(force=True)
@@ -292,7 +322,14 @@ class HistoryTab(QWidget):
         except Exception:
             log.exception("history provider failed")
             return
-        signature = (len(recs), recs[-1].get("ts") if recs else None)
+        # revision counts journal appends/rotates: with a full window the list
+        # length and last ts can stay put while confirm outcomes arrive; the
+        # minute bucket keeps relative-time labels ("5m ago") ticking over
+        rev = self._rev_fn() if self._rev_fn else 0
+        signature = (len(recs),
+                     recs[0].get("ts") if recs else None,
+                     recs[-1].get("ts") if recs else None,
+                     rev, int(time.time() // 60))
         if not force and signature == self._signature:
             return
         self._signature = signature

@@ -29,7 +29,7 @@ sys.path.insert(0, ROOT)
 from advanced_analyzer import HistoryStore, _sigmoid   # noqa: E402
 from appconfig import Config, app_dir                  # noqa: E402
 from calibration import (calibrate_from_ticks,         # noqa: E402
-                         collect_training_rows, pseudo_label, suggest_thresholds)
+                         labeled_samples, suggest_thresholds)
 
 
 def history_base() -> str:
@@ -81,10 +81,9 @@ def threshold_suggestions(cfg: Config, game: str, db_dir: str) -> str:
     ticks = load_ticks(db_dir, game, cfg.detector.history_retention_days)
     if ticks is None or len(ticks) < 50:
         return f"  {game}: not enough history"
-    samples = collect_training_rows(cfg.detector, league_start_fn_factory(cfg), ticks)
-    xs, ys = pseudo_label(samples, cfg.detector.suspect_at, cfg.detector.organic_at)
+    xs, ys = labeled_samples(cfg.detector, league_start_fn_factory(cfg), ticks)
     if not xs:
-        return f"  {game}: no confident samples"
+        return f"  {game}: no labelable rows (need forward price data)"
     pairs = [(_sigmoid(cfg.detector.bias + sum(w * fi for w, fi in
                                                zip(cfg.detector.weights, x))), y)
              for x, y in zip(xs, ys)]

@@ -34,7 +34,9 @@ log = logging.getLogger("ninjaalert.poller")
 
 RATE_LIMIT_EXTRA_WAIT_SECONDS = 10 * 60   # extra cooldown after HTTP 429
 LEAGUE_REFRESH_SECONDS = 6 * 3600
-SECTION_DISCOVERY_SECONDS = 24 * 3600     # site-index section sweep cadence
+# poe.ninja's economy index gains/loses sections on patch day and mid-league
+# balance patches - sweep often enough to catch those within hours
+SECTION_DISCOVERY_SECONDS = 6 * 3600      # site-index section sweep cadence
 AUTO_CLEAR_STRIKES = 6                    # consecutive 404 cycles -> report for removal
 
 
@@ -65,6 +67,7 @@ class PollWorker(QThread):
         self._auto_cleared: set = set()          # reported for removal, don't re-emit
         self._last_discovery = 0.0
         self._wake_at: Optional[float] = None    # one early re-poll deadline
+        self._wake_cats: set = set()             # categories the re-poll scopes to
         self._last_current_league: str = ""
 
     # --------------------------------------------------- control (GUI thread)
@@ -74,6 +77,7 @@ class PollWorker(QThread):
         self._unavailable_warned.clear()
         self._auto_cleared.clear()
         self._unavail_strikes.clear()
+        self._last_discovery = 0.0     # settings changed: sweep the site index soon
         self._wake.set()  # start a fresh cycle soon with the new settings
 
     def pause(self, on: bool) -> None:
@@ -84,11 +88,14 @@ class PollWorker(QThread):
     def check_now(self) -> None:
         self._wake.set()
 
-    def wake_soon(self, delay_s: float = 120.0) -> None:
+    def wake_soon(self, delay_s: float = 120.0, categories=None) -> None:
         """One early re-poll (e.g. right after an alert fired): the next sleep
         ends at `delay_s` instead of the full interval, to confirm the move.
-        Core logic unchanged — it is just a shorter wait for the next cycle."""
+        With `categories`, that confirmation cycle fetches only those category
+        ids instead of the whole game (plan item C9)."""
         self._wake_at = time.time() + max(30.0, float(delay_s))
+        if categories:
+            self._wake_cats.update(categories)
 
     def stop(self) -> None:
         self._stop_flag = True
@@ -125,6 +132,8 @@ class PollWorker(QThread):
         cfg = self.current_config
         gc = cfg.game_cfg(self.game)
         self._wake_at = None                   # one-shot re-poll consumed
+        wake_cats = self._wake_cats            # one-shot category scope consumed
+        self._wake_cats = set()
 
         if not gc.enabled:
             self.state_changed.emit("disabled")
@@ -143,6 +152,10 @@ class PollWorker(QThread):
         current = league_ids[0]
         if self._last_current_league != current:
             if self._last_current_league:
+                # patch/league rollover: the section set may have changed -
+                # sweep the site index again on the next cycle instead of
+                # waiting out the discovery cadence
+                self._last_discovery = 0.0
                 self.note.emit(f"New league detected: {current}")
             self._last_current_league = current
 
@@ -151,6 +164,14 @@ class PollWorker(QThread):
         self.state_changed.emit("fetching")
 
         cats = [c for c in cfg.watched(self.game) if c in CATEGORIES[self.game]]
+        if wake_cats:
+            cats = [c for c in cats if c in wake_cats]
+            if not cats:
+                self.note.emit("confirmation re-scan: categories no longer watched")
+                self.state_changed.emit("waiting")
+                self._sleep_interval()
+                return
+            log.info("confirmation re-scan (%s): only %s", self.game, ", ".join(cats))
         if not cats:
             self.note.emit("No categories selected - nothing to watch")
             self.state_changed.emit("waiting")
@@ -195,8 +216,9 @@ class PollWorker(QThread):
             self.category_done.emit(self.game, label, len(quotes))
 
         if not had_error:
-            self._maybe_autoclear()
-            self._maybe_discover(cfg, league)
+            if not wake_cats:              # sweeps belong to full cycles only
+                self._maybe_autoclear()
+                self._maybe_discover(cfg, league)
             self.state_changed.emit("waiting")
             self._sleep_interval()
         else:
