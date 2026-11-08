@@ -492,7 +492,8 @@ class AnomalyAnalyzer:
                 breadth = max(0, same) / peers
             manip = self._manipulation(m, breadth)
             if collect is not None:
-                collect.append((self._features(m, breadth), manip))
+                collect.append((self._features(m, breadth), manip,
+                                tick.key, tick.ts, tick.price, m.r))
             if abs(m.z_adj) < z_star or abs(m.r - cat_med_r) < c.min_log_move:
                 continue
             label = ("SUSPECT" if manip >= c.suspect_at

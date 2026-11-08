@@ -675,6 +675,32 @@ def test_advanced() -> None:
               f"base={alert_priority(9.0, 1, 0):.2f} big={alert_priority(50, 1, 0):.2f} "
               f"rvol={alert_priority(9, 5, 0):.2f}")
 
+        # ---- 7d. calibration labels from measured outcomes (D11) ----------
+        from calibration import collect_training_rows, forward_index, outcome_label
+        cfgd = DetectorCfg()
+        ts00 = 12_000_000.0
+
+        def tt(key, price, i):
+            return ItemTick(key=key, name=key, category="poe1:x:Currency", price=price,
+                            volume=None, listings=None, aux=None, ts=ts00 + i * 900.0)
+
+        ticks_d = [tt("poe1:x:Currency:A", 100.0 * (1 + 0.0005 * math.sin(i)), i)
+                   for i in range(30)]
+        ticks_d.append(tt("poe1:x:Currency:A", 150.0, 30))           # pump
+        ticks_d.append(tt("poe1:x:Currency:A", 100.0, 31))           # dump back
+        ticks_d += [tt("poe1:x:Currency:A", 100.0 * (1 + 0.0005 * math.sin(i)), i)
+                    for i in range(40, 70)]                          # flat beyond +6h
+        climb = [100.0 * (1.03 ** i) for i in range(30)]
+        ticks_d += [tt("poe1:x:Currency:B", climb[i], i) for i in range(30)]
+        ticks_d += [tt("poe1:x:Currency:B", climb[-1] * (1 + 0.0005 * math.sin(i)), i)
+                    for i in range(30, 70)]                          # hold beyond +6h
+
+        rows_d = collect_training_rows(cfgd, lambda g: "", ticks_d)
+        xs_d, ys_d = outcome_label(rows_d, forward_index(ticks_d), cfgd)
+        check("D11: reverted pump labeled fake(1), held moves labeled real(0)",
+              ys_d.count(1) == 1 and ys_d.count(0) >= 5,
+              f"{ys_d.count(1)} fake / {ys_d.count(0)} held of {len(ys_d)}")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
@@ -936,7 +962,7 @@ def test_hardening() -> None:
                   for i in range(40)]        # every tick is a real change (C8 skips repeats)
         samples = collect_training_rows(DetectorCfg(), lambda g: "", replay)
         check("calib: replay collects ready rows", len(samples) >= 10, str(len(samples)))
-        feats, manip = samples[-1]
+        feats, manip = samples[-1][0], samples[-1][1]   # rows carry key/ts/price/r too (D11)
         check("calib: sample features normalized",
               len(feats) == 6 and all(0.0 <= f <= 1.0 for f in feats) and 0.0 <= manip <= 1.0,
               f"{feats} {manip:.3f}")

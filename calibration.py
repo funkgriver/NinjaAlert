@@ -4,12 +4,11 @@ Implements the audit's Phase 1 recommendation: periodically refit the
 manipulation-classifier weights (w_k, b) by gradient descent on log-loss,
 Platt-scaling style, instead of running on static hand-set values forever.
 
-Ground truth: there are no manual labels. Training pairs are pseudo-labelled
-from the model's own confident decisions on replayed history:
-
-    manip >= suspect_at  ->  y = 1   (SUSPECT cohort)
-    manip <= organic_at  ->  y = 0   (ORGANIC cohort)
-    in between           ->  skipped (AMBIGUOUS carries no signal)
+Ground truth (plan item D11): labels come from measured forward outcomes of
+the replayed history - a row is "fake" (y=1) when its move had reverted to
+under 50% of the size by +6 h, "real" (y=0) when it held. The legacy
+self-pseudo-labelling (pseudo_label) is kept for compatibility but the refit
+no longer trusts the model's own opinion.
 
 Safeguards (the refit may only sharpen the boundary, never run away):
   * minimum-sample gate (>= MIN_POS positives and >= MIN_NEG negatives)
@@ -83,13 +82,17 @@ def collect_training_rows(cfg, league_start_fn: Callable[[str], str],
     return samples
 
 
-def pseudo_label(samples: Sequence[Tuple[Sequence[float], float]],
+def pseudo_label(samples: Sequence[Sequence[float]],
                  suspect_at: float, organic_at: float
                  ) -> Tuple[List[List[float]], List[int]]:
-    """Split confident model decisions into (xs, ys); AMBIGUOUS rows are dropped."""
+    """(Legacy) self-labelling from the model's own confident decisions.
+
+    Kept for compatibility; the refit now labels rows by measured forward
+    outcomes - see outcome_label (plan item D11)."""
     xs: List[List[float]] = []
     ys: List[int] = []
-    for feats, manip in samples:
+    for sample in samples:
+        feats, manip = sample[0], sample[1]
         if manip >= suspect_at:
             ys.append(1)
         elif manip <= organic_at:
@@ -98,6 +101,74 @@ def pseudo_label(samples: Sequence[Tuple[Sequence[float], float]],
             continue
         xs.append([float(f) for f in feats])
     return xs, ys
+
+
+# --------------------------------------------------- outcome labels (plan D11)
+def forward_index(ticks: Sequence[ItemTick]) -> Dict[str, List[Tuple[float, float]]]:
+    """key -> ascending [(ts, price)] used for forward-looking outcome checks."""
+    fwd: Dict[str, List[Tuple[float, float]]] = {}
+    for t in ticks:
+        if t.price > 0:
+            fwd.setdefault(t.key, []).append((t.ts, t.price))
+    for series in fwd.values():
+        series.sort()
+    return fwd
+
+
+def _price_after(series: Sequence[Tuple[float, float]], ts: float) -> Optional[float]:
+    """First recorded price at or after ts (None when the item left history)."""
+    lo, hi = 0, len(series)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if series[mid][0] < ts:
+            lo = mid + 1
+        else:
+            hi = mid
+    return series[lo][1] if lo < len(series) else None
+
+
+def outcome_label(samples: Sequence[Sequence[float]],
+                  forward: Dict[str, List[Tuple[float, float]]],
+                  cfg, horizon_h: float = 6.0
+                  ) -> Tuple[List[List[float]], List[int]]:
+    """Plan item D11: label every ready replayed row by what the price did
+    next instead of by the model's own confident decisions.
+
+    y = 0  the move kept >= 50% of its size at +horizon (real pressure)
+    y = 1  the move had reverted below 50% at +horizon (fake/manipulated)
+    Rows without forward data or with a negligible move are dropped.
+    """
+    xs: List[List[float]] = []
+    ys: List[int] = []
+    horizon_s = horizon_h * 3600.0
+    for sample in samples:
+        feats = sample[0]
+        rest = list(sample[1:]) + [None] * 5     # legacy 2-tuples have no outcome ids
+        _manip, key, ts, price, r = rest[0], rest[1], rest[2], rest[3], rest[4]
+        if key is None or r is None or abs(r) < cfg.min_log_move:
+            continue
+        series = forward.get(key)
+        if not series:
+            continue
+        p_h = _price_after(series, ts + horizon_s)
+        if p_h is None:
+            continue
+        prev = price * math.exp(-r)
+        move = price - prev
+        if abs(move) < 1e-12:
+            continue
+        share = (p_h - prev) / move
+        xs.append([float(f) for f in feats])
+        ys.append(0 if share >= 0.5 else 1)
+    return xs, ys
+
+
+def labeled_samples(cfg, league_start_fn: Callable[[str], str],
+                    ticks: Sequence[ItemTick], horizon_h: float = 6.0
+                    ) -> Tuple[List[List[float]], List[int]]:
+    """Replay + measured-outcome labels in one call (plan item D11)."""
+    samples = collect_training_rows(cfg, league_start_fn, ticks)
+    return outcome_label(samples, forward_index(ticks), cfg, horizon_h)
 
 
 # ------------------------------------------------------------------- fitting
@@ -236,9 +307,9 @@ def calibrate_from_ticks(cfg, league_start_fn: Callable[[str], str],
     """
     if len(ticks) < 50:
         return None
-    samples = collect_training_rows(cfg, league_start_fn, ticks)
-    xs, ys = pseudo_label(samples, cfg.suspect_at, cfg.organic_at)
+    xs, ys = labeled_samples(cfg, league_start_fn, ticks)
     result = fit_logistic(xs, ys, current_weights, current_bias, epochs=epochs)
     if not xs:
-        result.reason = result.reason or "no confident samples in history"
+        result.reason = result.reason or ("no labelable rows in history "
+                                          "(rows need forward price data)")
     return result
