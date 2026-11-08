@@ -1358,6 +1358,7 @@ def test_qt() -> None:
         from api_client import FetchMeta
         from appconfig import Config
         from ui_overlay import ToastManager
+        from PyQt6.QtTest import QTest
         from ui_settings import SettingsWindow
 
         cfg = Config()
@@ -1453,6 +1454,31 @@ def test_qt() -> None:
         check("ui: valid league_start clears the error flag",
               settings._league_start_edit.property("error") is False)
         settings._league_start_edit.setText("")
+
+        # QA: monitor checkbox draft survives game-tab switches (G: "the
+        # checkmark keeps coming back" - uncheck poe2, switch, save applied
+        # only the ACTIVE tab, poe2 silently reverted)
+        settings.set_leagues("poe2", ["Forbidden Rites", "Standard"])
+        QTest.mouseClick(settings._btn_poe2, _QtQ.MouseButton.LeftButton)
+        app.processEvents()
+        settings._monitor_check.setChecked(True)     # user re-enables poe2
+        QTest.mouseClick(settings._btn_poe1, _QtQ.MouseButton.LeftButton)
+        app.processEvents()
+        poe1_state = settings._monitor_check.isChecked()
+        QTest.mouseClick(settings._btn_poe2, _QtQ.MouseButton.LeftButton)
+        app.processEvents()
+        check("ui: monitor draft survives tab switches (poe2 keeps user state)",
+              settings._monitor_check.isChecked() is True
+              and poe1_state is True,
+              f"poe2={settings._monitor_check.isChecked()}, poe1={poe1_state}")
+        settings._monitor_check.setChecked(False)    # user disables poe2 again
+        QTest.mouseClick(settings._btn_poe1, _QtQ.MouseButton.LeftButton)
+        app.processEvents()
+        settings._save()
+        check("ui: save clears the draft, poe1 state intact",
+              settings._monitor_check.isChecked() is True
+              and "poe2" not in settings._monitor_draft,
+              f"poe1={settings._monitor_check.isChecked()}, draft={settings._monitor_draft}")
         from appconfig import ScenarioCfg
         settings._scen_draft.append(ScenarioCfg(name="t", game="poe1",
                                                 metric="pct", value=5.0))

@@ -274,6 +274,9 @@ class SettingsWindow(QWidget):
         self._editing_game = "poe1"
         self._leagues: Dict[str, List[str]] = {}
         self._checks: Dict[str, Dict[str, bool]] = {"poe1": {}, "poe2": {}}
+        # unsaved monitor-checkbox draft per game: survives game-tab switches
+        # (a silent discard read as "the checkmark keeps coming back")
+        self._monitor_draft: Dict[str, bool] = {}
         self._state = "starting"
         self._paused = False
         self._status_provider: Optional[Callable[[], dict]] = None
@@ -801,7 +804,10 @@ class SettingsWindow(QWidget):
     def _load_game_fields(self, game: str) -> None:
         c = self._cfg
         gc = c.game_cfg(game)
-        self._monitor_check.setChecked(bool(gc.enabled))
+        if game in self._monitor_draft:      # unsaved edit survives the switch
+            self._monitor_check.setChecked(self._monitor_draft[game])
+        else:
+            self._monitor_check.setChecked(bool(gc.enabled))
         self._league_start_edit.setText(gc.league_start or "")
         self._interval_spin.setValue(int(gc.poll_interval_minutes))
         self._jump_spin.setValue(c.thresholds.jump_pct)
@@ -910,6 +916,7 @@ class SettingsWindow(QWidget):
             cat_id = item.data(Qt.ItemDataRole.UserRole)
             state_map[cat_id] = item.checkState() == Qt.CheckState.Checked
         self._checks[game] = state_map
+        self._monitor_draft[game] = self._monitor_check.isChecked()
 
     def _on_item_changed(self, _item) -> None:
         pass  # states are collected on save
@@ -950,6 +957,7 @@ class SettingsWindow(QWidget):
         c.alerts.max_popups = int(self._max_popups_spin.value())
         c.alerts.price_display = self._price_display_combo.currentData() or "both"
         c.webhook.enabled = self._webhook_check.isChecked()
+        self._monitor_draft.clear()
         c.webhook.url = self._webhook_url.text().strip()
         c.webhook.min_priority = float(self._webhook_minprio.value())
         c.scenarios = list(self._scen_draft)
