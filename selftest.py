@@ -1422,6 +1422,19 @@ def test_qt() -> None:
               and AlertHistoryCard._confirm_badge(out[1]) is None,
               str(badge))
         card.deleteLater()
+        # digest-folded items land in the journal and render with a fold marker
+        from webhook import digest_record
+        drec = digest_record(ditems[0], "poe1", "Allflame")
+        check("history: folded digest item journaled",
+              drec["folded"] is True and drec["key"].endswith("det0:")
+              and drec["source"] == "item" and drec["details_id"] == "det0"
+              and drec["category"] == "poe1:item:UniqueArmour",
+              str(drec))
+        fcard = AlertHistoryCard(drec, IconLoader())
+        check("history: folded card marks the budget fold",
+              "folded by budget" in fcard._meta_text(drec),
+              fcard._meta_text(drec))
+        fcard.deleteLater()
 
         hist_recs = [rec]
         rev = [0]

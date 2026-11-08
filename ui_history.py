@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from api_client import BASE_URL, FetchMeta, format_price
+from api_client import BASE_URL, price_meta, format_price
 from categories import get_cat
 from ui_overlay import IconLoader, TOAST_HEIGHT, _league_slug, friendly_status
 
@@ -206,9 +206,8 @@ class AlertHistoryCard(QFrame):
         except (TypeError, ValueError):
             pct = (new / old - 1.0) * 100.0 if old else 0.0
         game = str(rec.get("game") or "poe1")
-        meta = FetchMeta(game=game, league=str(rec.get("league") or ""),
-                         category=str(rec.get("category") or ""), source="exchange",
-                         primary="chaos" if game == "poe1" else "divine")
+        meta = price_meta(game, str(rec.get("league") or ""),
+                          str(rec.get("category") or ""))
         arrow = " → " if old != new else ""
         pct_text = f"  {pct:+.1f}%" if old != new else ""
         return (f"{format_price(old, meta, display)}{arrow}"
@@ -221,6 +220,8 @@ class AlertHistoryCard(QFrame):
             parts.append(str(rec["category"]).rsplit(":", 1)[-1])
         if rec.get("label"):
             parts.append(friendly_status(rec["label"]))
+        if rec.get("folded"):
+            parts.append("▤ folded by budget")
         if rec.get("phase"):
             parts.append(str(rec["phase"]))
         if rec.get("z_adj"):
