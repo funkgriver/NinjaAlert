@@ -110,6 +110,14 @@ def format_number(v: float) -> str:
     return f"{v:.4f}".rstrip("0").rstrip(".") or "0"
 
 
+def price_meta(game: str, league: str = "",
+               category: str = "", source: str = "exchange") -> FetchMeta:
+    """FetchMeta tuned for price rendering: primary/secondary follow the game."""
+    return FetchMeta(game=game, league=league, category=category, source=source,
+                     primary="chaos" if game == "poe1" else "divine",
+                     secondary="divine" if game == "poe1" else "chaos", rates={})
+
+
 def format_price(price: float, meta: FetchMeta, display: str = "both") -> str:
     """Price rendering using the fetch context.
 
