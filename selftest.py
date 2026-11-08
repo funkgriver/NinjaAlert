@@ -542,6 +542,23 @@ def test_advanced() -> None:
         check("B6: stable snapshot stays quiet (no #market residue)",
               not quiet, str([a.key for a in quiet]))
 
+        # ---- 4g. exchange liquidity weight follows volume (B7) ------------
+        cfgv = DetectorCfg()
+        av = AnomalyAnalyzer(cfgv, lambda g: "")
+        stv = av._fresh(ItemTick(key="k", name="k", category="c", price=10.0,
+                                 volume=1000.0, listings=None, aux=None, ts=0.0))
+        mv = av._advance(stv, ItemTick(key="k", name="k", category="c", price=10.5,
+                                       volume=100.0, listings=None, aux=None, ts=3600.0),
+                         12.0, 72.0)
+        thin = av._advance(stv, ItemTick(key="k", name="k", category="c", price=11.0,
+                                         volume=5.0, listings=None, aux=None, ts=7200.0),
+                           12.0, 72.0)
+        check("B7: exchange w_l follows volume (damps thin markets)",
+              mv is not None and thin is not None
+              and abs(mv.w_l - 100.0 / (100.0 + cfgv.liquidity_v0)) < 1e-9
+              and thin.w_l < mv.w_l < 1.0,
+              f"w_l(vol=100)={mv.w_l:.3f}, w_l(vol=5)={thin.w_l:.3f}")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")

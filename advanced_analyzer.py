@@ -282,7 +282,15 @@ class AnomalyAnalyzer:
             st.steps.append(step)
 
         listings = tick.listings
-        w_l = listings / (listings + c.liquidity_l0) if listings is not None and listings >= 0 else 1.0
+        if listings is not None and listings >= 0:
+            w_l = listings / (listings + c.liquidity_l0)
+        elif (tick.volume is not None and tick.volume >= 0
+                and getattr(c, "liquidity_v0", 0.0) > 0):
+            # plan item B7: exchange quotes have no listings - volume is the
+            # liquidity proxy; w_l=1 made every thin market fully confident
+            w_l = tick.volume / (tick.volume + c.liquidity_v0)
+        else:
+            w_l = 1.0
         z_adj = z * math.sqrt(w_l)
 
         a_f = 1.0 - 2.0 ** (-dt_h / hf)
