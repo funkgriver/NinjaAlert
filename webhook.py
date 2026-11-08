@@ -216,6 +216,30 @@ class AlertJournal:
         return out
 
 
+def digest_record(item, game: str, league: str,
+                  icon: Optional[str] = None) -> Dict[str, Any]:
+    """Journal payload for one item folded into a digest toast.
+
+    Folded moves used to vanish from the History tab (only governor-shown
+    alerts were journaled); they now land there marked ``folded`` so nothing
+    that fired is ever lost. Webhook stays alert-only: budget-suppressed
+    moves must not spam endpoints.
+    """
+    key = str(item.key)
+    parts = key.split(":")
+    source = "item" if len(parts) > 1 and parts[1] == "i" else "exchange"
+    return {
+        "game": game, "league": league, "name": str(item.name),
+        "category": str(item.category), "price": float(item.price),
+        "prev_price": float(item.prev_price), "pct": round(float(item.pct), 2),
+        "direction": item.direction, "label": str(item.label),
+        "priority": round(float(item.priority), 3),
+        "ts": float(time.time()), "key": key, "icon": icon,
+        "details_id": parts[3] if len(parts) > 3 else None,
+        "source": source, "folded": True,
+    }
+
+
 def attach_confirms(recs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Pair confirmation records with their alerts (C9 -> History tab).
 

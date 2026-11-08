@@ -40,7 +40,7 @@ from poller import PollWorker
 from ui_overlay import ToastManager
 from ui_settings import SettingsWindow
 from webhook import (AlertJournal, WebhookSender, attach_confirms, confirm_record,
-                     format_alert_text)
+                     digest_record, format_alert_text)
 
 log = logging.getLogger("ninjaalert.main")
 
@@ -441,8 +441,15 @@ class NinjaAlertController(QObject):
                             if len(a.key.split(":")) > 2}
                     worker.wake_soon(float(self._cfg.alerts.confirm_rescan_seconds),
                                      categories=cats)
-            if result["digest"] is not None:
-                self._toasts.show_digest(result["digest"], result["game"], meta.league)
+            digest = result.get("digest")
+            if digest is not None:
+                # folded moves land in the journal too - the History tab must
+                # not lose them just because the budget kept the popup quiet
+                for it in digest.items:
+                    self._journal.append(digest_record(
+                        it, result["game"], meta.league,
+                        icon=self._icon_map.get(it.key)))
+                self._toasts.show_digest(digest, result["game"], meta.league)
         except Exception:
             log.exception("alert dispatch failed")
 
