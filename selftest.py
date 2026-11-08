@@ -413,6 +413,44 @@ def test_advanced() -> None:
         check("governor: dedup keeps highest priority",
               len(shown3) == 1 and shown3[0] is stronger)
 
+        # ---- 4c. empirical z* caps raw alerts on heavy tails (B3) --------
+        import math
+        import random
+
+        rng = random.Random(20261108)
+
+        def t3() -> float:            # Student-t(3), stdlib: Z / sqrt(V/3)
+            v = sum(rng.gauss(0.0, 1.0) ** 2 for _ in range(3))
+            return rng.gauss(0.0, 1.0) / math.sqrt(v / 3.0)
+
+        cfgt = DetectorCfg()
+        cfgt.target_alerts_per_category_per_day = 20.0
+        ant = AnomalyAnalyzer(cfgt, lambda g: "")
+        snap_ts0 = 5_000_000.0
+        items = [f"poe1:x:Currency:itm{i}" for i in range(200)]
+        prices = {k: 10.0 for k in items}
+
+        def hourly(price_fn, n_snaps, start_idx):
+            alerts = 0
+            for i in range(start_idx, start_idx + n_snaps):
+                ts = snap_ts0 + i * 3600.0
+                ticks = tuple(
+                    ItemTick(key=k, name=k, category="poe1:x:Currency",
+                             price=(prices.__setitem__(k, max(1e-6, price_fn(prices[k])))
+                                    or prices[k]),
+                             volume=None, listings=None, aux=None, ts=ts)
+                    for k in items)
+                alerts += len(ant.process(Snapshot(
+                    game="poe1", category="poe1:x:Currency", league="", ts=ts,
+                    source="documented", ticks=ticks)))
+            return alerts
+
+        hourly(lambda p: p * math.exp(t3() * 0.01), 30, 0)     # warm-up: baselines + pool
+        measured = hourly(lambda p: p * math.exp(t3() * 0.01), 96, 30)
+        rate = measured / 4.0                                   # 4 days, hourly polls
+        check("B3: t(3) raw rate within 2x of target (20/day, phase-model floor ~49/day)",
+              10.0 <= rate <= 40.0, f"{rate:.1f}/day ({measured} alerts / 4d)")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
