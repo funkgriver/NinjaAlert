@@ -104,9 +104,13 @@ gitignored and never committed; `config.example.json` documents the full schema.
 ## Analyzing
 
 - `history-poe1.sqlite3` / `history-poe2.sqlite3` (next to the exe, 14-day retention)
-  store every tick — warm start rebuilds baselines instantly after restart.
+  store every price change — warm start rebuilds baselines instantly after restart.
+  Size-bounded: repeats are not stored, the WAL is checkpointed hourly, and a league
+  rollover wipes the store (history is league-scoped, leagues live ≤ ~4 months).
 - `alerts.jsonl` — one JSON line per admitted alert (price, z_adj, RVOL, label,
-  priority, phase) — feed for refitting thresholds/weights.
+  priority, phase) — feed for refitting thresholds/weights. Rotated into
+  `alerts.jsonl.old` at 5 MB and on every league change, so it never grows past
+  ~10 MB.
 
 ```bash
 # how many alerts per label / category:

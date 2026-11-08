@@ -215,6 +215,8 @@ class AnalysisWorker(QThread):
         if pipeline is not None:
             pipeline.analyzer.reset()
             pipeline.governor.reset()
+            wiped = pipeline.store.clear()         # history is league-scoped
+            log.info("history wiped for league change (%s): %d ticks", game, wiped)
         basics[game].reset()
         self._scenarios.reset()
         log.info("engines reset (%s)", game)

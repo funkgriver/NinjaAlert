@@ -602,8 +602,8 @@ def test_advanced() -> None:
             pp.handle(Snapshot(game="poe1", category="poe1:x:Currency", league="",
                                ts=tsb + 1800.0, source="documented", ticks=ticks))
             zero_rt = [x for x in pp.analyzer._states["u"].rt if x == 0.0]
-            check("C8: store keeps every tick, engine window has no zero returns",
-                  pp.store.count() == 3 and not zero_rt,
+            check("C8: store keeps every change, engine window has no zero returns",
+                  pp.store.count() == 2 and not zero_rt,
                   f"store={pp.store.count()}, zero_rt={len(zero_rt)}")
             pp.close()
 
@@ -857,6 +857,45 @@ def test_hardening() -> None:
             check("sqlite: basic-mode ingest prunes", len(rows) == 1 and rows[0].key == "new",
                   str([r.key for r in rows]))
             pl.close()
+
+        # ---- file size bounds (files must not bloat over a league) --------
+        import os
+        from webhook import AlertJournal, JOURNAL_MAX_BYTES
+        check("files: journal cap is bounded", JOURNAL_MAX_BYTES <= 8 * 1024 * 1024,
+              f"{JOURNAL_MAX_BYTES} bytes")
+        with tempfile.TemporaryDirectory() as td4:
+            jpath = os.path.join(td4, "alerts.jsonl")
+            j = AlertJournal(jpath)
+            for i in range(5):
+                j.append({"i": i, "text": "x" * 60})
+            check("files: rotate_if_large no-op below cap",
+                  j.rotate_if_large(1024 * 1024) is False and os.path.exists(jpath))
+            check("files: rotate folds journal into .old",
+                  j.rotate() is True and os.path.exists(jpath + ".old")
+                  and not os.path.exists(jpath))
+            j.append({"i": 99, "text": "y" * 100})
+            check("files: oversized journal rotates on cap",
+                  j.rotate_if_large(50) is True and os.path.exists(jpath + ".old"))
+
+        with tempfile.TemporaryDirectory() as td5:
+            st2 = HistoryStore(Path(td5) / "h5.sqlite3")
+            tk = [ItemTick(key="k", name="k", category="c", price=10.0, volume=None,
+                           listings=5.0, aux=None, ts=t0 + i * 900.0) for i in range(3)]
+            tk.append(ItemTick(key="k", name="k", category="c", price=10.5, volume=None,
+                               listings=5.0, aux=None, ts=t0 + 3 * 900.0))
+            tk.append(ItemTick(key="k", name="k", category="c", price=0.0, volume=None,
+                               listings=0.0, aux=None, ts=t0 + 4 * 900.0))
+            st2.append(tk)
+            check("files: store keeps changes and delists, not repeats",
+                  st2.count() == 3, str(st2.count()))
+            st2.prune(t0 + 2.5 * 900.0)            # retention window drops old rows
+            st2.maintain()
+            check("files: maintain keeps wal truncated", st2.count() == 2)
+            st2.clear()
+            pages = int(st2._con.execute("PRAGMA page_count").fetchone()[0])
+            check("files: league wipe empties and shrinks the store",
+                  st2.count() == 0 and pages < 100, f"pages={pages}")
+            st2.close()
 
         # ---- api transport ----------------------------------------------------
         class FakeResp:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -19,6 +20,8 @@ from typing import Any, Callable, Dict, List, Optional
 import requests
 
 log = logging.getLogger("ninjaalert.webhook")
+
+JOURNAL_MAX_BYTES = 5 * 1024 * 1024   # alerts.jsonl rotates above this (keeps .old)
 
 
 def format_alert_text(a, league: str) -> str:
@@ -140,7 +143,11 @@ def confirm_record(key: str, ref: Dict[str, Any], new_price: Optional[float],
 
 
 class AlertJournal:
-    """Append-only JSONL of every alert admitted by the governor (analysis input)."""
+    """Append-only JSONL of every alert admitted by the governor (analysis input).
+
+    Bounded by design: the file rotates into alerts.jsonl.old (one generation)
+    once it exceeds JOURNAL_MAX_BYTES, and on every league change - leagues
+    live at most a few months, so the journal never grows past that."""
 
     def __init__(self, path: str) -> None:
         self._path = path
@@ -154,6 +161,30 @@ class AlertJournal:
                     f.write(line + "\n")
         except Exception:
             log.debug("alert journal append failed", exc_info=True)
+
+    def rotate_if_large(self, max_bytes: int = JOURNAL_MAX_BYTES) -> bool:
+        """Size cap: fold the journal into alerts.jsonl.old once it exceeds
+        max_bytes (no-op below the cap)."""
+        try:
+            if os.path.getsize(self._path) <= max_bytes:
+                return False
+        except OSError:
+            return False
+        return self.rotate()
+
+    def rotate(self) -> bool:
+        """Start a fresh journal; the current one becomes alerts.jsonl.old
+        (replacing the previous generation). Called on league changes too."""
+        try:
+            with self._lock:
+                if not os.path.exists(self._path):
+                    return False
+                os.replace(self._path, self._path + ".old")
+            log.info("journal rotated -> %s.old", os.path.basename(self._path))
+            return True
+        except OSError:
+            log.exception("journal rotate failed")
+            return False
 
     def read_recent(self, limit: int = 200) -> List[Dict[str, Any]]:
         """Last `limit` records (oldest -> newest) for the History tab.
