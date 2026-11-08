@@ -60,8 +60,23 @@ class Anomaly:
 
 
 @dataclass(frozen=True, slots=True)
+class DigestItem:
+    """One folded anomaly carried inside a digest (interactive toast row)."""
+    key: str
+    name: str
+    category: str               # raw "<game>:<source>:<type>"
+    price: float
+    prev_price: float
+    pct: float
+    direction: int              # +1 up, -1 down
+    label: str                  # ORGANIC | AMBIGUOUS | SUSPECT | SCENARIO·x
+    priority: float
+
+
+@dataclass(frozen=True, slots=True)
 class Digest:
-    """Summary line for anomalies that did not get a token."""
+    """Summary for anomalies that did not get a token."""
     count: int
     names: Tuple[str, ...]
     categories: Tuple[Tuple[str, int], ...]
+    items: Tuple[DigestItem, ...] = ()   # rows for the expandable toast (capped)

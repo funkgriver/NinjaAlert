@@ -63,9 +63,22 @@ def main() -> int:
     mgr.show_alert(alert("Headhunter", "UniqueWeapon", "item", 4100.0, 5250.0,
                          "SCENARIO·Whale watch", "Mature", 3.6,
                          price_display="secondary"), meta_w)
-    mgr.show_digest(Digest(count=7,
-                           names=("Fracturing Orb", "Hinekoras Lock", "Emperor's Mist"),
-                           categories=(("Scarab", 3), ("Essence", 2))), "poe1", "Allflame")
+    from models import Digest, DigestItem
+    ditems = tuple(DigestItem(
+        key=f"poe1:i:UniqueArmour:det{i}:", name=name,
+        category="poe1:item:UniqueArmour", price=price, prev_price=prev,
+        pct=(price / prev - 1.0) * 100.0, direction=1 if price >= prev else -1,
+        label=label, priority=5.0 - i)
+        for i, (name, prev, price, label) in enumerate([
+            ("Lich's Circle (Shaper/Warlord)", 12.0, 19.5, "SUSPECT"),
+            ("Shagreen Boots (Hunter)", 4.1, 6.8, "AMBIGUOUS"),
+            ("Sacrificial Garb (Warlord)", 210.0, 305.0, "ORGANIC"),
+            ("Vixen's Entrapment", 88.0, 124.0, "SUSPECT"),
+        ]))
+    mgr.show_digest(Digest(count=31,
+                           names=tuple(it.name for it in ditems),
+                           categories=(("poe1:item:BaseType", 31), ("poe1:item:ValdoMap", 1)),
+                           items=ditems), "poe1", "Allflame")
 
     # let the 150 ms fade-in finish so the capture shows the settled look
     t0 = time.time()

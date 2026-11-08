@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -19,6 +20,8 @@ from typing import Any, Callable, Dict, List, Optional
 import requests
 
 log = logging.getLogger("ninjaalert.webhook")
+
+JOURNAL_MAX_BYTES = 5 * 1024 * 1024   # alerts.jsonl rotates above this (keeps .old)
 
 
 def format_alert_text(a, league: str) -> str:
@@ -117,12 +120,40 @@ class WebhookSender:
             log.info("webhook delivered: %s", payload.get("name"))
 
 
+def confirm_record(key: str, ref: Dict[str, Any], new_price: Optional[float],
+                   now: float) -> Dict[str, Any]:
+    """Journal record for one confirmation re-scan outcome (plan item C9).
+
+    ref carries the alert context: ref_ts, alert_price, prev_price, game,
+    league, cat_id. new_price None means the item vanished from the re-scanned
+    category. held = the move kept >= 50% of its size versus the alert's own
+    baseline - same semantics as tools/backtest.py.
+    """
+    move = ref["alert_price"] - ref["prev_price"]
+    share = None if (new_price is None or abs(move) < 1e-12) \
+        else (new_price - ref["prev_price"]) / move
+    return {
+        "type": "confirm", "key": key, "ref_ts": ref["ref_ts"], "ts": now,
+        "game": ref["game"], "league": ref["league"], "category": ref["cat_id"],
+        "held": bool(share is not None and share >= 0.5),
+        "share": None if share is None else round(share, 3),
+        "price": new_price, "alert_price": ref["alert_price"],
+        "prev_price": ref["prev_price"],
+    }
+
+
 class AlertJournal:
-    """Append-only JSONL of every alert admitted by the governor (analysis input)."""
+    """Append-only JSONL of every alert admitted by the governor (analysis input).
+
+    Bounded by design: the file rotates into alerts.jsonl.old (one generation)
+    once it exceeds JOURNAL_MAX_BYTES, and on every league change - leagues
+    live at most a few months, so the journal never grows past that."""
 
     def __init__(self, path: str) -> None:
         self._path = path
         self._lock = threading.Lock()
+        self._appended = 0          # revision source: change detection for the History tab
+        self._rotations = 0
 
     def append(self, record: Dict[str, Any]) -> None:
         try:
@@ -130,8 +161,40 @@ class AlertJournal:
             with self._lock:
                 with open(self._path, "a", encoding="utf-8") as f:
                     f.write(line + "\n")
+                self._appended += 1
         except Exception:
             log.debug("alert journal append failed", exc_info=True)
+
+    def revision(self) -> int:
+        """Monotonic change counter (appends + rotations): lets the History
+        tab detect journal growth even when its window is full and every
+        visible record is unchanged (e.g. only confirm markers arrived)."""
+        return self._appended + self._rotations
+
+    def rotate_if_large(self, max_bytes: int = JOURNAL_MAX_BYTES) -> bool:
+        """Size cap: fold the journal into alerts.jsonl.old once it exceeds
+        max_bytes (no-op below the cap)."""
+        try:
+            if os.path.getsize(self._path) <= max_bytes:
+                return False
+        except OSError:
+            return False
+        return self.rotate()
+
+    def rotate(self) -> bool:
+        """Start a fresh journal; the current one becomes alerts.jsonl.old
+        (replacing the previous generation). Called on league changes too."""
+        try:
+            with self._lock:
+                if not os.path.exists(self._path):
+                    return False
+                os.replace(self._path, self._path + ".old")
+                self._rotations += 1
+            log.info("journal rotated -> %s.old", os.path.basename(self._path))
+            return True
+        except OSError:
+            log.exception("journal rotate failed")
+            return False
 
     def read_recent(self, limit: int = 200) -> List[Dict[str, Any]]:
         """Last `limit` records (oldest -> newest) for the History tab.
@@ -151,3 +214,35 @@ class AlertJournal:
             except json.JSONDecodeError:
                 continue                   # torn tail line, skip
         return out
+
+
+def attach_confirms(recs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Pair confirmation records with their alerts (C9 -> History tab).
+
+    Order-agnostic: the newest confirm per key attaches to the newest alert
+    record it references (rec["confirm"] = {held, share, price, ts}); confirm
+    markers themselves are dropped - they render as badges on the alert
+    cards, not as cards of their own.
+    """
+    confirms: Dict[str, Dict[str, Any]] = {}
+    for rec in recs:
+        if rec.get("type") != "confirm":
+            continue
+        key = str(rec.get("key") or "")
+        cur = confirms.get(key)
+        if cur is None or float(rec.get("ts") or 0.0) > float(cur.get("ts") or 0.0):
+            confirms[key] = rec
+    out: List[Dict[str, Any]] = []
+    for rec in recs:
+        if rec.get("type") == "confirm":
+            continue
+        conf = confirms.get(str(rec.get("key") or ""))
+        if (conf is not None
+                and float(conf.get("ref_ts") or 0.0) >= float(rec.get("ts") or 0.0)):
+            rec = dict(rec)
+            rec["confirm"] = {"held": bool(conf.get("held")),
+                              "share": conf.get("share"),
+                              "price": conf.get("price"),
+                              "ts": conf.get("ts")}
+        out.append(rec)
+    return out
