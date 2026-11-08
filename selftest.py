@@ -1433,6 +1433,49 @@ def test_qt() -> None:
               and isinstance(settings._history._records[0].get("confirm"), dict)
               and settings._history._records[0]["confirm"]["held"] is False,
               f"count={settings._history._list.count()}")
+
+        # regression: clicks must survive the list/scroll viewport grab
+        from PyQt6.QtCore import QSize as _QSize
+        from PyQt6.QtCore import Qt as _Qt
+        from PyQt6.QtGui import QGuiApplication
+        from PyQt6.QtTest import QTest
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        from ui_history import build_site_url
+        from ui_overlay import DigestOverlay
+        opened: list = []
+        QGuiApplication.openUrl = lambda url: opened.append(str(url))
+        jrec = {"key": "poe1:i:UniqueArmour:lich:", "name": "Lich's Circle",
+                "game": "poe1", "league": "Allflame",
+                "category": "poe1:item:UniqueArmour", "price": 19.5,
+                "prev_price": 12.0, "pct": 62.5, "ts": time.time(),
+                "label": "SUSPECT", "details_id": "lich"}
+        check("history: url resolves the 3-part journal category",
+              "/poe1/economy/allflame/" in (build_site_url(jrec) or "")
+              and "lich" in (build_site_url(jrec) or ""),
+              str(build_site_url(jrec)))
+        card2 = AlertHistoryCard(jrec, IconLoader())
+        lst = QListWidget()
+        lst.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        item = QListWidgetItem(lst)
+        item.setSizeHint(_QSize(420, 100))
+        lst.setItemWidget(item, card2)
+        lst.resize(420, 160)
+        lst.show()
+        app.processEvents()
+        QTest.mouseClick(card2, _Qt.MouseButton.LeftButton)
+        check("history: card click opens poe.ninja despite the list viewport",
+              len(opened) == 1 and "/poe1/economy/allflame/" in opened[0],
+              str(opened))
+        dovl2 = DigestOverlay(dgt, "poe1", "Allflame", 8.0, "both")
+        dovl2.show()
+        app.processEvents()
+        row0 = dovl2._body.widget().layout().itemAt(0).widget()
+        QTest.mouseClick(row0, _Qt.MouseButton.LeftButton)
+        check("digest: row click opens the item page",
+              len(opened) == 2 and "det0" in opened[1], str(opened))
+        card2.deleteLater()
+        dovl2.deleteLater()
+        lst.deleteLater()
         settings._history.deactivate()
         settings.hide()
 

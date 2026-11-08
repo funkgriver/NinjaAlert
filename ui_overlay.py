@@ -486,6 +486,14 @@ class _DigestRow(QFrame):
         price_lbl.setStyleSheet(f"color: {accent}; font-size: 11px; font-weight: 600;")
         lay.addWidget(price_lbl)
 
+    def mousePressEvent(self, event) -> None:
+        # keep the grab inside the row: the scroll viewport must not steal the
+        # press, or the release (and the navigation) never reaches us
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self._url:
             self.clicked.emit(self._url)
