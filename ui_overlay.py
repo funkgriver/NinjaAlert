@@ -24,7 +24,7 @@ from PyQt6.QtCore import (
     QUrl,
     pyqtSignal,
 )
-from PyQt6.QtGui import QColor, QFont, QGuiApplication, QPixmap
+from PyQt6.QtGui import QColor, QDesktopServices, QFont, QGuiApplication, QPixmap
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PyQt6.QtWidgets import (
     QFrame,
@@ -449,7 +449,8 @@ class NotificationOverlay(QWidget):
         self._dragging = False
         if was_click and self._site_url:
             try:
-                QGuiApplication.openUrl(QUrl(self._site_url))
+                # Qt6 removed QGuiApplication.openUrl - use QDesktopServices
+                QDesktopServices.openUrl(QUrl(self._site_url))
             except Exception:
                 log.exception("could not open %s", self._site_url)
             self.dismiss()
@@ -758,7 +759,7 @@ class DigestOverlay(QWidget):
     # ------------------------------------------------------------ behaviors
     def _open(self, url: str) -> None:
         try:
-            QGuiApplication.openUrl(QUrl(url))
+            QDesktopServices.openUrl(QUrl(url))
         except Exception:
             log.exception("could not open %s", url)
 
@@ -912,16 +913,14 @@ class ToastManager(QObject):
         corner = cfg.overlay.corner
         below = self._stack_offset(index)
         own_h = self._active[index].height() if index < len(self._active) else TOAST_HEIGHT
-        if corner == "bottom-right":
-            return QPoint(geo.right() - margin - TOAST_WIDTH,
-                          geo.bottom() - margin - own_h - below)
-        if corner == "bottom-left":
-            return QPoint(geo.left() + margin,
-                          geo.bottom() - margin - own_h - below)
-        if corner == "top-right":
-            return QPoint(geo.right() - margin - TOAST_WIDTH,
-                          geo.top() + margin + below)
-        return QPoint(geo.left() + margin, geo.top() + margin + below)  # top-left
+        if corner in ("bottom-right", "bottom-left"):
+            # clamp: a tall expanded digest must not escape past the top edge
+            y = max(geo.bottom() - margin - own_h - below, geo.top() + margin)
+            x = geo.right() - margin - TOAST_WIDTH if corner == "bottom-right" else geo.left() + margin
+            return QPoint(x, y)
+        y = min(geo.top() + margin + below, geo.bottom() - margin - own_h)
+        x = geo.right() - margin - TOAST_WIDTH if corner == "top-right" else geo.left() + margin
+        return QPoint(x, y)
 
     def _position(self, overlay: NotificationOverlay, index: int) -> None:
         if not overlay.user_moved:
