@@ -448,8 +448,43 @@ def test_advanced() -> None:
         hourly(lambda p: p * math.exp(t3() * 0.01), 30, 0)     # warm-up: baselines + pool
         measured = hourly(lambda p: p * math.exp(t3() * 0.01), 96, 30)
         rate = measured / 4.0                                   # 4 days, hourly polls
-        check("B3: t(3) raw rate within 2x of target (20/day, phase-model floor ~49/day)",
+        check("B3: t(3) raw rate within 2x of target (209/day phase-only -> 20.8/day capped)",
               10.0 <= rate <= 40.0, f"{rate:.1f}/day ({measured} alerts / 4d)")
+
+        # ---- 4d. young baselines shrink to the category scale (B4) -------
+        cfgb = DetectorCfg()
+        cfgb.target_alerts_per_category_per_day = 0.0    # isolate from B3
+
+        def build_blend(k):
+            cfgb.mad_shrink_k = k
+            ab = AnomalyAnalyzer(cfgb, lambda g: "")
+            ts0 = 6_000_000.0
+
+            def snap_at(i, x_price=5.0):
+                ticks = []
+                for j in range(20):      # healthy fillers: category |rt| ~ 2-4%
+                    key = f"poe1:x:Currency:f{j}"
+                    sign = 1 if (i + j) % 2 else -1
+                    amp = 0.01 + 0.01 * ((i + 3 * j) % 4) / 3.0
+                    p = 10.0 * (1.0 + sign * amp)
+                    ticks.append(ItemTick(key=key, name=key, category="poe1:x:Currency",
+                                          price=p, volume=None, listings=None, aux=None,
+                                          ts=ts0 + i * 3600.0))
+                ticks.append(ItemTick(key="poe1:x:Currency:X", name="X",
+                                      category="poe1:x:Currency", price=x_price,
+                                      volume=None, listings=None, aux=None,
+                                      ts=ts0 + i * 3600.0))
+                return Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                                ts=ts0 + i * 3600.0, source="documented", ticks=tuple(ticks))
+
+            for i in range(25):          # X stays flat: its own MAD collapses to 0
+                ab.process(snap_at(i))
+            return len(ab.process(snap_at(25, x_price=5.0 * 1.03)))
+
+        no_blend = build_blend(0.0)
+        blended = build_blend(30.0)
+        check("B4: flat item's 3% jump alerts without shrinkage, quiet with it",
+              no_blend >= 1 and blended == 0, f"k=0: {no_blend}, k=30: {blended}")
 
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
