@@ -701,6 +701,46 @@ def test_advanced() -> None:
               ys_d.count(1) == 1 and ys_d.count(0) >= 5,
               f"{ys_d.count(1)} fake / {ys_d.count(0)} held of {len(ys_d)}")
 
+        # ---- 7e. time-of-day volatility seasonality (D14) -----------------
+        import time as _time
+        cfgw = DetectorCfg()
+        aw = AnomalyAnalyzer(cfgw, lambda g: "")
+        ts_w0 = 1_760_000_000.0
+
+        def jitter(h):
+            return 0.002 if 18 <= h % 24 < 24 else 0.01   # quiet nights, active days
+
+        for i in range(900):                              # learn the buckets
+            ts = ts_w0 + i * 3600.0
+            h = _time.gmtime(ts).tm_hour
+            for k_i, key in enumerate(("w1", "w2")):
+                sign = 1 if (i + k_i) % 2 else -1
+                aw.process(Snapshot(game="poe1", category="poe1:x:Currency", league="",
+                                    ts=ts, source="documented",
+                                    ticks=(ItemTick(key=key, name=key,
+                                                    category="poe1:x:Currency",
+                                                    price=10.0 * (1 + sign * jitter(h)),
+                                                    volume=None, listings=None, aux=None,
+                                                    ts=ts),)))
+        last_ts = ts_w0 + 899 * 3600.0
+
+        def final_tick(key, hour_target, mult):
+            base = last_ts + 3600.0
+            ts = base + ((hour_target - _time.gmtime(base).tm_hour) % 24) * 3600.0
+            return ts, ItemTick(key=key, name=key, category="poe1:x:Currency",
+                                price=10.0 * mult, volume=None, listings=None,
+                                aux=None, ts=ts)
+
+        ts_n, t_n = final_tick("w1", 20, 1.02)            # quiet night bucket
+        ts_d, t_d = final_tick("w2", 2, 1.02)             # active day bucket
+        mx = aw._advance(aw._states["w1"], t_n, 12.0, 72.0)
+        my = aw._advance(aw._states["w2"], t_d, 12.0, 72.0)
+        check("D14: same move scores higher in the quiet bucket",
+              mx is not None and my is not None and mx.z_adj > my.z_adj
+              and aw._season(ts_n, ts_n) < 1.0 <= aw._season(ts_d, ts_d),
+              f"z_night={mx.z_adj:.2f} z_day={my.z_adj:.2f} "
+              f"s_night={aw._season(ts_n, ts_n):.2f} s_day={aw._season(ts_d, ts_d):.2f}")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")

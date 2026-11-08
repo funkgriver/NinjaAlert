@@ -115,6 +115,9 @@ class DetectorCfg:
     liquidity_v0: float = 200.0
     # a delist (listingCount < 1) boosts the manipulation feature for this long
     delist_window_hours: float = 6.0
+    # time-of-day volatility seasonality: divide returns by the learned
+    # 4x6h-UTC bucket scale (measured 4x spread on real history)
+    tod_seasonality: bool = True
     max_gap_hours: float = 72.0
     # ---- confirmation / classification (spec sections 3-4) -----------------
     crossover_confirm: float = 0.75
