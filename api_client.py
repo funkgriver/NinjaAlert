@@ -21,6 +21,8 @@ Price semantics (verified against live data 2026-11):
 from __future__ import annotations
 
 import logging
+import math
+import threading
 import time
 from dataclasses import dataclass, field
 from random import uniform
@@ -175,6 +177,9 @@ class NinjaApiClient:
         self._user_agent_fn = user_agent_fn or (lambda: "NinjaAlert/2.0 (contact: unset)")
         self._base_url_fn = base_url_fn or (lambda: BASE_URL)
         self._sess = requests.Session()
+        # one client instance is shared by the PollWorker thread and GUI-thread
+        # league refreshes (main._refresh_leagues) - guard the mutable caches
+        self._lock = threading.RLock()
         self._etags: Dict[str, str] = {}
         self._last_request_ts = 0.0
         self._leagues: Dict[str, List[League]] = {}
@@ -185,8 +190,9 @@ class NinjaApiClient:
         """League ids for a game; first entry is the current challenge league."""
         if game not in ("poe1", "poe2"):
             raise ValueError(f"unknown game: {game!r}")
-        cached = self._leagues.get(game)
-        fresh = (time.time() - self._leagues_ts.get(game, 0.0)) < LEAGUES_TTL_SECONDS
+        with self._lock:
+            cached = self._leagues.get(game)
+            fresh = (time.time() - self._leagues_ts.get(game, 0.0)) < LEAGUES_TTL_SECONDS
         if cached and fresh and not force:
             return cached
         url = f"{self._base_url_fn().rstrip('/')}/{game}/api/economy/leagues"
@@ -208,8 +214,9 @@ class NinjaApiClient:
                 leagues.append(League(id=str(entry["id"]), name=str(entry.get("name") or entry["id"])))
         if not leagues:
             raise ApiError(f"league list for {game} is empty")
-        self._leagues[game] = leagues
-        self._leagues_ts[game] = time.time()
+        with self._lock:
+            self._leagues[game] = leagues
+            self._leagues_ts[game] = time.time()
         log.info("leagues(%s): %s", game, [l.id for l in leagues])
         return leagues
 
@@ -281,7 +288,7 @@ class NinjaApiClient:
             try:
                 ident = str(ln.get("id"))
                 price = float(ln.get("primaryValue") or 0.0)
-                if not ident or price <= 0:
+                if not ident or not math.isfinite(price) or price <= 0:
                     continue
                 m = items_meta.get(ident) or {}
                 icon = self._abs_icon(m.get("image"))
@@ -334,7 +341,7 @@ class NinjaApiClient:
                 else:
                     price = ln.get("primaryValue")
                 price = float(price or 0.0)
-                if price <= 0:
+                if not math.isfinite(price) or price <= 0:
                     continue
                 lc = ln.get("listingCount")
                 list_count = int(lc) if isinstance(lc, (int, float)) else None
@@ -395,7 +402,8 @@ class NinjaApiClient:
         cache_key = self._cache_key(url, params)
         headers: Dict[str, str] = {"Accept": "application/json",
                                    "User-Agent": self._user_agent_fn()}
-        etag = self._etags.get(cache_key)
+        with self._lock:
+            etag = self._etags.get(cache_key)
         if etag:
             headers["If-None-Match"] = etag
 
@@ -436,7 +444,8 @@ class NinjaApiClient:
 
             et = resp.headers.get("ETag")
             if et:
-                self._etags[cache_key] = et
+                with self._lock:
+                    self._etags[cache_key] = et
             return resp
         raise ApiError(f"network error after {MAX_RETRIES} attempts: {last_err}")
 
@@ -465,10 +474,11 @@ class NinjaApiClient:
             raise ApiError(f"malformed JSON from {context}: {exc}") from exc
 
     def _throttle(self) -> None:
-        gap = time.time() - self._last_request_ts
-        if gap < MIN_REQUEST_GAP_SECONDS:
-            time.sleep(MIN_REQUEST_GAP_SECONDS - gap)
-        self._last_request_ts = time.time()
+        with self._lock:
+            gap = time.time() - self._last_request_ts
+            if gap < MIN_REQUEST_GAP_SECONDS:
+                time.sleep(MIN_REQUEST_GAP_SECONDS - gap)
+            self._last_request_ts = time.time()
 
 
 def _f(value: Any) -> Optional[float]:

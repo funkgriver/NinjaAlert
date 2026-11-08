@@ -463,7 +463,12 @@ class Config:
                 sc.op = ">="
             if sc.direction not in VALID_DIRECTIONS:
                 sc.direction = "any"
-            sc.value = float(sc.value)
+            try:
+                sc.value = float(sc.value)
+            except (TypeError, ValueError):
+                # one broken scenario must not reset the whole config to defaults
+                log.warning("scenario %r: non-numeric value dropped", sc.name)
+                continue
             sc.cooldown_minutes = min(max(float(sc.cooldown_minutes), 5.0), 10080.0)
             kept.append(sc)
         self.scenarios = kept
