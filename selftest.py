@@ -665,6 +665,16 @@ def test_advanced() -> None:
         check("D13: f3 fires on supply flooding a drop, not on vanishing supply",
               f_flood == 1.0 and f_vanish == 0.0, f"flood={f_flood}, vanish={f_vanish}")
 
+        # ---- 7c. priority ranks by absolute move and volume (D12) ---------
+        from advanced_analyzer import alert_priority
+        check("D12: priority ignores price level, grows with move size and volume",
+              alert_priority(50.0, 1.0, 0.0) > alert_priority(9.0, 1.0, 0.0)
+              and alert_priority(9.0, 5.0, 0.0) > alert_priority(9.0, 1.0, 0.0)
+              and alert_priority(9.0, 1.0, 2.0) > alert_priority(9.0, 1.0, 0.0)
+              and alert_priority(500.0, 1.0, 0.0) > alert_priority(9.0, 1.0, 0.0) * 2.0,
+              f"base={alert_priority(9.0, 1, 0):.2f} big={alert_priority(50, 1, 0):.2f} "
+              f"rvol={alert_priority(9, 5, 0):.2f}")
+
         # ---- 5. history store round trip ---------------------------------
         with tempfile.TemporaryDirectory() as td:
             store = HistoryStore(Path(td) / "h.sqlite3")
