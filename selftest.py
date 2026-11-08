@@ -1388,13 +1388,8 @@ def test_qt() -> None:
               and not league_is_variant("Allflame")
               and not league_is_variant("Runes of Aldur"),
               "poe2 live list classified")
-        settings._leagues["poe2"] = [
-            type("L", (), {"id": "Forbidden Rites", "name": "Forbidden Rites"}),
-            type("L", (), {"id": "Runes of Aldur", "name": "Runes of Aldur"}),
-            type("L", (), {"id": "HC Forbidden Rites", "name": "HC Forbidden Rites"}),
-            type("L", (), {"id": "Standard", "name": "Standard"}),
-            type("L", (), {"id": "Hardcore", "name": "Hardcore"}),
-        ]
+        settings._leagues["poe2"] = ["Forbidden Rites", "Runes of Aldur",
+                                     "HC Forbidden Rites", "Standard", "Hardcore"]
         settings._editing_game = "poe2"
         settings._fill_league_combo()
         combo = settings._league_combo

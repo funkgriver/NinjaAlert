@@ -14,9 +14,10 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import replace as dc_replace
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QSettings, QTimer, Qt, pyqtSignal
+from types import SimpleNamespace
 from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -831,7 +832,10 @@ class SettingsWindow(QWidget):
     def _fill_league_combo(self) -> None:
         game = self._editing_game
         gc = self._cfg.game_cfg(game)
-        leagues = self._leagues.get(game, [])
+        # the poller signal carries plain ids (strings); tolerate both shapes
+        leagues: List[Any] = [
+            SimpleNamespace(id=lg, name=lg) if isinstance(lg, str) else lg
+            for lg in self._leagues.get(game, [])]
         current = (gc.league or (leagues[0].id if leagues else "") or "").strip()
         self._league_combo.blockSignals(True)
         self._league_combo.clear()
