@@ -64,6 +64,23 @@ class League(NamedTuple):
     name: str
 
 
+def is_permanent_league(name: str) -> bool:
+    """Standard/Hardcore trade-only leagues (always present, never current)."""
+    return name.strip().lower() in ("standard", "hardcore", "hc standard")
+
+
+def league_is_variant(name: str) -> bool:
+    """HC / SSF / Ruthless derivations of a challenge league - grouped after
+    the main list in the league picker. The first API entry is the current
+    challenge league; markerless entries (mid-league events) count as main."""
+    n = name.strip().lower()
+    if is_permanent_league(n):
+        return True
+    if n.startswith("hc ") or n.startswith("hardcore ") or " hardcore" in f" {n} ":
+        return True
+    return any(m in n for m in ("ssf", "solo self", "ruthless"))
+
+
 @dataclass
 class FetchMeta:
     """Context of a successful fetch cycle - needed to interpret prices."""
