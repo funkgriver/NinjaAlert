@@ -223,6 +223,14 @@ class Config:
     def game_cfg(self, game: str) -> GameCfg:
         return self.games.setdefault(game, GameCfg())
 
+    def league_is_fresh(self, game: str, current: str) -> bool:
+        """True when `current` was never seen before for this game - i.e. the
+        app was offline across a league rollover (patch-day restart). First
+        ever runs have an empty leagues_seen and are not "fresh" (nothing to
+        wipe)."""
+        seen = self.leagues_seen.get(game, {})
+        return bool(seen) and current not in seen
+
     def register_custom_section(self, game: str, cat_id: str, source: str,
                                 label: str, slug: str = "") -> bool:
         """Persist a runtime-discovered poe.ninja section (discovery.py).

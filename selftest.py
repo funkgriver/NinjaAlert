@@ -908,6 +908,15 @@ def test_hardening() -> None:
             ScenarioCfg(name="good", game="poe1", category="*", metric="pct",
                         op=">=", value=5.0, direction="any", cooldown_minutes=60.0)]
         cfgq._sanitize()
+        # QA: patch-day restart detection (offline across the rollover)
+        cfgl = Config()
+        cfgl.leagues_seen["poe1"] = {"Allflame": "2026-11-01"}
+        check("leagues: offline rollover detected as fresh",
+              cfgl.league_is_fresh("poe1", "Keeperr") is True
+              and cfgl.league_is_fresh("poe1", "Allflame") is False)
+        cfgl.leagues_seen["poe2"] = {}
+        check("leagues: first-ever run is not fresh (nothing to wipe)",
+              cfgl.league_is_fresh("poe2", "Forbidden Rites") is False)
         check("config: broken scenario dropped, config survives",
               len(cfgq.scenarios) == 1 and cfgq.scenarios[0].name == "good"
               and cfgq.webhook.url == "https://keep.example/hook",
