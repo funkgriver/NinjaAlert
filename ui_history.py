@@ -13,10 +13,11 @@ import logging
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PyQt6.QtCore import QSize, Qt, QTimer, QUrl
+from PyQt6.QtCore import QSize, Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
+    QToolButton,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -95,6 +96,8 @@ class AlertHistoryCard(QFrame):
     """Read-only toast replica for one journal record: click opens the item's
     poe.ninja page; a confirmation badge shows what the move did next."""
 
+    muted = pyqtSignal(str, float)
+
     def __init__(self, rec: Dict[str, Any], icon_loader: IconLoader,
                  price_display: str = "both", parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -155,6 +158,18 @@ class AlertHistoryCard(QFrame):
         right = QVBoxLayout()
         right.setSpacing(1)
         right.addWidget(when)
+        self._mute_btn = mute_btn = QToolButton()
+        mute_btn.setText("🔇")
+        mute_btn.setToolTip("Mute this item for 30 minutes")
+        mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        mute_btn.setStyleSheet(
+            "QToolButton { color: #9aa4b2; background: transparent; border: none;"
+            " font-size: 11px; padding: 0 2px; }"
+            "QToolButton:hover { color: #ffffff; }"
+        )
+        mute_btn.clicked.connect(
+            lambda: self.muted.emit(str(rec.get("key") or ""), 30.0))
+        right.addWidget(mute_btn, alignment=Qt.AlignmentFlag.AlignRight)
         badge = self._confirm_badge(rec)
         if badge is not None:
             badge_lbl = QLabel(badge[0])
@@ -266,6 +281,8 @@ class AlertHistoryCard(QFrame):
 class HistoryTab(QWidget):
     """Journal-backed alert history with live filters and auto-refresh."""
 
+    mute_requested = pyqtSignal(str, float)
+
     def __init__(self, price_display_fn: Callable[[], str],
                  parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -374,6 +391,7 @@ class HistoryTab(QWidget):
             if not self._passes(rec):
                 continue
             card = AlertHistoryCard(rec, self._loader, display)
+            card.muted.connect(lambda k, m: self.mute_requested.emit(k, m))
             item = QListWidgetItem(self._list)
             item.setSizeHint(QSize(0, card.height() + 2))
             self._list.addItem(item)

@@ -781,11 +781,21 @@ class AlertGovernor:
         self._tokens = float(cfg.bucket_capacity)
         self._t0 = now_fn()
         self._cool: Dict[str, _Cool] = {}
+        self._muted: Dict[str, float] = {}     # key -> mute until ts (one-click snooze)
 
     def reset(self) -> None:
         self._cool.clear()
+        self._muted.clear()
         self._tokens = float(self.cfg.bucket_capacity)
         self._t0 = self._now()
+
+    def mute(self, key: str, minutes: float = 30.0) -> None:
+        """One-click snooze: suppress alerts for this item until the TTL ends
+        (not shown, not digested - the user asked for silence)."""
+        self._muted[key] = self._now() + max(1.0, float(minutes)) * 60.0
+
+    def unmute(self, key: str) -> None:
+        self._muted.pop(key, None)
 
     def _cooldown(self, k: int) -> float:
         return min(self.cfg.cooldown_max_s, self.cfg.cooldown_base_s * 2 ** max(0, k - 1))
@@ -806,6 +816,11 @@ class AlertGovernor:
 
         eligible: List[Anomaly] = []
         for a in sorted(best.values(), key=lambda x: x.priority, reverse=True):
+            until = self._muted.get(a.key)
+            if until is not None:
+                if now < until:
+                    continue               # one-click snooze active (no shown, no digest)
+                del self._muted[a.key]
             cool = self._cool.get(a.key)
             if cool is not None:
                 age = now - cool.last_ts

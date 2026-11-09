@@ -426,6 +426,19 @@ def test_advanced() -> None:
         check("governor: dedup keeps highest priority",
               len(shown3) == 1 and shown3[0] is stronger)
 
+        # ---- 4g-mute. one-click snooze (QA) --------------------------------
+        gov_m = AlertGovernor(gov_cfg)
+        gov_m.mute(anoms[0].key, 30.0)
+        shown_m, dig_m = gov_m.decide([anoms[0]])
+        check("mute: muted key suppressed (no shown, no digest)",
+              len(shown_m) == 0 and dig_m is None,
+              f"shown={len(shown_m)}, digest={dig_m.count if dig_m else None}")
+        gov_m._muted[anoms[0].key] = time.time() - 1.0        # TTL expired
+        shown_m2, _ = gov_m.decide([anoms[0]])
+        check("mute: expired TTL passes again", len(shown_m2) == 1, str(len(shown_m2)))
+        gov_m.reset()
+        check("mute: reset clears the mute store", not gov_m._muted)
+
         # ---- 4c. empirical z* caps raw alerts on heavy tails (B3) --------
         import math
         import random
@@ -1391,6 +1404,15 @@ def test_qt() -> None:
               str(overlay._site_url))
         check("qt: title rendered", "Divine Orb" in overlay._title.text())
 
+        # one-click mute from the toast
+        muted_cap: list = []
+        overlay.muted.connect(lambda k, m: muted_cap.append((k, m)))
+        from PyQt6.QtCore import Qt as _QtM
+        QTest.mouseClick(overlay._mute_btn, _QtM.MouseButton.LeftButton)
+        check("qt: toast mute button emits 30m",
+              len(muted_cap) == 1 and muted_cap[0][0] == alert.key
+              and muted_cap[0][1] == 30.0, str(muted_cap))
+
         # interactive digest toast (human labels, expandable, clickable rows)
         from models import Digest, DigestItem
         ditems = tuple(DigestItem(
@@ -1403,7 +1425,8 @@ def test_qt() -> None:
                      categories=(("poe1:item:BaseType", 31), ("poe1:item:ValdoMap", 1)),
                      items=ditems)
         mgr.show_digest(dgt, "poe1", "Allflame")
-        check("qt: digest overlay created", len(mgr._active) == 2)
+        check("qt: digest overlay created", len(mgr._active) == 1,
+              f"active={len(mgr._active)} (toast muted+dismissed)")
         dovl = mgr._active[-1]
         check("qt: digest chips use human labels",
               "Base Types" in dovl._chips.text() and "BaseType ×31" not in dovl._chips.text(),
@@ -1420,7 +1443,7 @@ def test_qt() -> None:
               bool(url0) and "/poe1/economy/allflame/" in url0 and "det0" in url0,
               str(url0))
         dovl.dismiss()
-        check("qt: digest dismissed", len(mgr._active) == 1)
+        check("qt: digest dismissed", len(mgr._active) == 0)
 
         settings = SettingsWindow(cfg)
         saved = []
@@ -1567,6 +1590,14 @@ def test_qt() -> None:
         settings._history.refresh(force=True)
         check("qt: history card rendered", settings._history._list.count() == 1,
               str(settings._history._list.count()))
+
+        hist_card = settings._history._list.itemWidget(settings._history._list.item(0))
+        hist_muted: list = []
+        hist_card.muted.connect(lambda k, m: hist_muted.append((k, m)))
+        QTest.mouseClick(hist_card._mute_btn, _QtQ.MouseButton.LeftButton)
+        check("qt: history card mute emits",
+              len(hist_muted) == 1 and hist_muted[0][0] == rec["key"],
+              str(hist_muted))
         settings._history._search.setText("mirror-of-kalandra")
         settings._history._rebuild()
         check("qt: history filter yields empty state",
