@@ -584,6 +584,23 @@ class NinjaAlertController(QObject):
                 "New league detected",
                 f"{game}: {current} — baselines reseeded from scratch.",
                 QSystemTrayIcon.MessageIcon.Information, 4000)
+        elif not previous and self._cfg.league_is_fresh(game, current):
+            # the app was OFFLINE across the rollover (patch-day restart):
+            # stored ticks belong to the previous league - wipe and reseed
+            # exactly like a live rollover, or stale baselines poison warm start
+            self._cfg.leagues_seen.setdefault(game, {})[current] = date.today().isoformat()
+            self._runtime_new_leagues.add(current)
+            try:
+                self._cfg.save(config_path())
+            except Exception:
+                log.warning("could not persist leagues_seen", exc_info=True)
+            if self._worker is not None:
+                self._worker.reset_game(game)
+                self._journal.rotate()             # journal is league-scoped too
+            self._tray.showMessage(
+                "New league detected",
+                f"{game}: {current} — history wiped, baselines reseeded.",
+                QSystemTrayIcon.MessageIcon.Information, 4000)
         elif not previous:
             self._cfg.leagues_seen.setdefault(game, {}).setdefault(current,
                                                                    date.today().isoformat())
