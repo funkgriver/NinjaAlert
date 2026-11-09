@@ -114,23 +114,37 @@ QLineEdit[error="true"] { border: 1px solid #e5534b; color: #ff9b8a; }
 # bursts often precede price moves, |z| filters out tiny league-start noise.
 SCENARIO_PRESETS = (
     ("Divine moves — poe1 Currency ≥10% up",
+     "Pings when the chaos:divine pair jumps 10%+ - the league's main money pair moving.",
      dict(name="Divine moves", game="poe1", category="Currency",
           metric="pct", op=">=", value=10.0, direction="up", cooldown_minutes=60.0)),
     ("Dump watch — any ≤-15% down",
+     "Catches sharp dumps across every watched poe1 category - exit or short-check.",
      dict(name="Dump watch", game="poe1", metric="pct", op="<=", value=-15.0,
           direction="down", cooldown_minutes=60.0)),
     ("Volume burst — RVOL ×5+",
+     "Fires when trading volume explodes to 5x the usual - volume often moves before price.",
      dict(name="Volume burst", game="poe1", metric="rvol", op=">=", value=5.0,
           cooldown_minutes=90.0)),
     ("High-conviction — |z| ≥4.5",
+     "Only statistically extreme moves - the rarest false positives, fewest alerts.",
      dict(name="High-conviction z", game="poe1", metric="z_abs", op=">=",
           value=4.5, cooldown_minutes=120.0)),
     ("Top priority — ≥3",
+     "The loudest multi-factor signals only - big, liquid and confirmed at once.",
      dict(name="Top priority", game="poe1", metric="priority", op=">=",
           value=3.0, cooldown_minutes=45.0)),
     ("Whale gear — poe1 uniques ≥15% up",
+     "Expensive uniques moving 15%+ - whale activity worth following.",
      dict(name="Whale gear", game="poe1", category="UniqueWeapon",
           metric="pct", op=">=", value=15.0, direction="up", cooldown_minutes=60.0)),
+    ("League-start movers — poe2 Currency ≥20% up",
+     "Early poe2 economy: the main currency pair moving 20%+ in a session.",
+     dict(name="poe2 movers", game="poe2", category="Currency",
+          metric="pct", op=">=", value=20.0, direction="up", cooldown_minutes=45.0)),
+    ("Essence spikes — poe1 Essences ≥25%",
+     "Essence market spikes 25%+ - crafting demand surges, fast flips.",
+     dict(name="Essence spikes", game="poe1", category="Essence",
+          metric="pct", op=">=", value=25.0, direction="up", cooldown_minutes=45.0)),
 )
 
 
@@ -588,9 +602,11 @@ class SettingsWindow(QWidget):
         btn_del.clicked.connect(self._scenario_remove)
         self._preset_combo = QComboBox()
         self._preset_combo.addItem("Add preset…", None)
-        for label, kwargs in SCENARIO_PRESETS:
+        for label, desc, kwargs in SCENARIO_PRESETS:
             self._preset_combo.addItem(label, kwargs)
-        self._preset_combo.setToolTip("Ready-made scenario templates (dropdown)")
+            self._preset_combo.setItemData(self._preset_combo.count() - 1, desc,
+                                           Qt.ItemDataRole.ToolTipRole)
+        self._preset_combo.setToolTip("Ready-made scenario templates (hover for details)")
         self._preset_combo.currentIndexChanged.connect(self._on_preset_pick)
         for b in (btn_add, btn_edit, btn_del, self._preset_combo):
             row.addWidget(b)
@@ -605,6 +621,9 @@ class SettingsWindow(QWidget):
         kwargs = self._preset_combo.itemData(idx)
         if kwargs:
             self._add_preset(kwargs)
+            desc = self._preset_combo.itemData(idx, Qt.ItemDataRole.ToolTipRole)
+            if desc:
+                self.flash_status(f"Preset added - {desc}")
         self._preset_combo.blockSignals(True)
         self._preset_combo.setCurrentIndex(0)   # reset to placeholder
         self._preset_combo.blockSignals(False)
@@ -705,6 +724,9 @@ class SettingsWindow(QWidget):
     def set_history_source(self, fn: Callable[..., list],
                            rev_fn: Optional[Callable[[], int]] = None) -> None:
         self._history.set_provider(fn, rev_fn)
+
+    def set_mute_state(self, fn: Optional[Callable[[], dict]]) -> None:
+        self._history.set_mute_state(fn)
 
     def _refresh_status(self) -> None:
         if self._status_provider is None:

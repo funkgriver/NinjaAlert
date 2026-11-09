@@ -2,88 +2,79 @@
 
 Windows tray app that watches **poe.ninja** (PoE 1 + PoE 2 in parallel), detects
 price/liquidity anomalies with **league-phase-adjusted robust statistics**, and
-pushes **clickable transparent popups**, a **history journal**, webhook messages
-and a **sound cue** — without flooding you.
+pushes **clickable transparent popups**, a **History journal with outcome badges**,
+a **one-click item mute**, and a **sound cue** — without flooding you.
 
 ```
 PollWorker×2 (per game)  →  AnalysisWorker  →  governor  →  toasts / journal
   leagues + categories       robust z · RVOL     budget,     clickable cards
-  ETag/304 · back-off        market drift split  cooldowns   + digest
+  ETag/304 · back-off        market drift split  mute/snooze + digest
   section discovery          manipulation score  dedup/key
 ```
 
-## Quick start
+## Install (one click)
 
-```bash
-python -m venv .venv && .venv\Scripts\activate
-pip install -r requirements.txt
-python main.py          # tray app
-python main.py --debug  # console logging + settings window
-```
+1. Install **Python 3.11+** (tick "Add python.exe to PATH")
+2. Download this repo → double-click **`install.bat`**
+3. It builds `dist\NinjaAlert.exe`, launches it, done — it lives in the tray
 
-Build: `build.bat` → `dist\NinjaAlert.exe` (single file). Config lives next to
-the exe (`config.json`, created on first run) and holds your Telegram/webhook
-secrets — it is gitignored, never committed; `config.example.json` documents
-the schema.
+Already built? Grab `dist\NinjaAlert.exe` from the
+[Releases page](https://github.com/funkgriver/NinjaAlert/releases) — it's
+portable, no Python needed.
 
-## Setup (2 minutes)
+## Daily work
 
-1. Launch → tray icon → double-click opens the (resizable) settings window.
-2. **API contact** — an email/GitHub handle poe.ninja can identify you by.
-3. **Games** — tick PoE 1 and/or PoE 2, pick watched categories, optional
-   league start date (empty = auto rollover detection).
-4. Save & Apply. Alerts start after ~3 polls (baselines seeding).
+- **Tray icon** — double-click opens settings; right-click menu: pause, check now, quit
+- **Toasts** — `price → price (+%)` plus a **plain-English reason**
+  ("price up 45% on 5x the usual volume — real demand"), not jargon.
+  🔇 mutes the item for 30 min, ✕ dismisses, click opens poe.ninja
+- **History tab** — every alert with a **confirmation badge** (✓ held N% /
+  ✗ reverted / – gone), filters, 🔇 mute, click → poe.ninja
+- **Mute** — annoying item? 🔇 anywhere: 30 minutes of silence, auto-expires
 
-## How alerts work
+## Custom scenarios
 
-- **Robust engine** — per-item z-score on hour-scaled log returns (median/MAD,
-  spikes can't poison the baseline), liquidity weight, RVOL, EMA-trend
-  confirmation, manipulation classification: ✅ ORGANIC / 🤔 AMBIGUOUS / ⚠ SUSPECT.
-- **Noise guards** — unchanged ticks never reach the engine, category-wide
-  drift collapses into one "market move" event, the empirical per-category
-  threshold caps raw alerts at a daily target, price-step floors kill
-  quantization artifacts, time-of-day volatility is learned.
-- **Alert budget** — token bucket (5 tokens, 1/2 min), escalating per-item
-  cooldowns, overflow folds into one interactive digest: click it to expand
-  the folded moves, click a row to open poe.ninja.
-- **Confirmation re-scan** — after an alert, only its category is re-polled
-  (~2 min) and the card in History gets its outcome badge: ✓ held N%,
-  ✗ reverted, – gone. Nothing is lost: digest-folded moves land in History
-  marked "folded by budget".
-- **History tab** — every alert as a toast replica from `alerts.jsonl`:
-  filters, live refresh, click → poe.ninja.
-- **Self-calibration** — classifier weights refit from measured forward
-  outcomes (did the move hold?), guarded by sample gates and holdout log-loss.
+Scenarios tab → **Add preset…** dropdown (hover for descriptions) or build your
+own rule: match game + category + name substring, trigger on `pct` / `z` / `rvol`
+/ `priority`, direction filter, per-item cooldown. Scenario alerts bypass the
+alert budget and get a `SCENARIO·name` badge.
+
+Typical recipes:
+
+| Recipe | Rule | When to use |
+|---|---|---|
+| Divine moves | poe1 Currency ≥10% up | The main money pair moved |
+| Dump watch | any ≤-15% down | Exit / short-check signal |
+| Volume burst | RVOL ≥5 | Volume explodes before price does |
+| Whale gear | poe1 uniques ≥15% up | Expensive items moving — follow the whales |
+| League-start movers | poe2 Currency ≥20% up | Early poe2 economy swings |
+| Essence spikes | poe1 Essences ≥25% up | Crafting demand surges |
+
+Edit any preset freely after adding — cooldown, threshold, direction.
+
+## Under the hood
+
+- **Robust engine** — per-item z-score on hour-scaled log returns (median/MAD),
+  liquidity weight, RVOL, EMA-trend confirmation, manipulation scoring
+  (✅ ORGANIC / 🤔 AMBIGUOUS / ⚠ SUSPECT)
+- **Noise guards** — unchanged ticks skipped, category-wide drift collapsed into
+  one "market move" event, price-step floors, learned time-of-day volatility,
+  empirical per-category alert-rate cap
+- **Confirmation re-scan** — after an alert, its category is re-polled ~2 min
+  later and the History card gets the outcome badge
+- **Self-calibration** — classifier weights refit from measured outcomes every
+  6 h (`detector.auto_calibrate` in config.json)
+- **League rollover** — history wiped + baselines reseeded automatically, even
+  if the app was off during the flip; section discovery re-sweeps the site index
 
 ## Tools
 
 ```bash
 python tools/backtest.py        # score alerts: retained move at +2/6/24 h
 python tools/calibrate.py       # refit weights + threshold suggestions
-python tools/analyze.py         # journal summary, |z| buckets, history stats
-python tools/diag_returns.py    # zero-return share, sqrt(dt) scaling check
-python tools/diag_alert_rate.py # raw (pre-governor) alert rate replay
-python tools/mem_stress.py      # RSS growth under load
+python tools/analyze.py         # journal summary, history stats
+python selftest.py              # offline QA suite (~100 checks)
 ```
 
-## Files it keeps (bounded by design)
-
-| File | Bound |
-|---|---|
-| `history-*.sqlite3` | only price changes stored, 14-day retention, hourly WAL checkpoint, wiped on league rollover (history is league-scoped; leagues live ≤ ~4 months) |
-| `alerts.jsonl` | rotated to `.old` at 5 MB and on every league change |
-| `ninjaalert.log` | 512 KB × 2 rotations |
-| `config.json` | yours, gitignored — holds tokens, never commit it |
-
-## Layout
-
-`main.py` (tray/controller) · `analysis_worker.py` (engine-owner QThread) ·
-`poller.py` (per-game QThread + section discovery) · `api_client.py` (ETag/304,
-retries) · `advanced_analyzer.py` (phase model, robust engine, governor,
-HistoryStore) · `analyzer.py` (basic delta engine) · `calibration.py`
-(outcome-labelled refit) · `scenarios.py` (user alert rules) · `webhook.py`
-(journal + webhook + confirm records) · `ui_overlay.py` / `ui_settings.py` /
-`ui_history.py` · `selftest.py` (offline QA suite).
-
 Be polite: poe.ninja has no SLA and blocks abusive clients — keep the API
-contact filled, respect the poll interval. Personal-use tool.
+contact filled and respect the poll interval. Personal-use tool.

@@ -99,9 +99,11 @@ class AlertHistoryCard(QFrame):
     muted = pyqtSignal(str, float)
 
     def __init__(self, rec: Dict[str, Any], icon_loader: IconLoader,
-                 price_display: str = "both", parent: Optional[QWidget] = None) -> None:
+                 price_display: str = "both", parent: Optional[QWidget] = None,
+                 mute_state: Optional[dict] = None) -> None:
         super().__init__(parent)
         self._rec = rec
+        self._mute_state = mute_state or {}
         self._url = build_site_url(rec)
         self.setObjectName("histCard")
         self.setStyleSheet(CARD_QSS)
@@ -158,9 +160,12 @@ class AlertHistoryCard(QFrame):
         right = QVBoxLayout()
         right.setSpacing(1)
         right.addWidget(when)
+        key = str(rec.get("key") or "")
+        is_muted = key in (self._mute_state or {})
+        self._is_muted = is_muted
         self._mute_btn = mute_btn = QToolButton()
-        mute_btn.setText("🔇")
-        mute_btn.setToolTip("Mute this item for 30 minutes")
+        mute_btn.setText("🔔" if is_muted else "🔇")
+        mute_btn.setToolTip("Unmute now" if is_muted else "Mute this item for 30 minutes")
         mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         mute_btn.setStyleSheet(
             "QToolButton { color: #9aa4b2; background: transparent; border: none;"
@@ -168,7 +173,8 @@ class AlertHistoryCard(QFrame):
             "QToolButton:hover { color: #ffffff; }"
         )
         mute_btn.clicked.connect(
-            lambda: self.muted.emit(str(rec.get("key") or ""), 30.0))
+            lambda: self.muted.emit(str(rec.get("key") or ""),
+                                    0.0 if self._is_muted else 30.0))
         right.addWidget(mute_btn, alignment=Qt.AlignmentFlag.AlignRight)
         badge = self._confirm_badge(rec)
         if badge is not None:
@@ -233,22 +239,21 @@ class AlertHistoryCard(QFrame):
         parts: List[str] = []
         if rec.get("category"):
             parts.append(str(rec["category"]).rsplit(":", 1)[-1])
-        if rec.get("label"):
-            parts.append(friendly_status(rec["label"]))
+        from webhook import plain_reason
+        direction = rec.get("direction")
+        if direction is None:
+            try:
+                direction = 1 if float(rec.get("pct") or 0) >= 0 else -1
+            except (TypeError, ValueError):
+                direction = 1
+        reason = plain_reason(rec.get("pct"), rec.get("rvol"), rec.get("supply_ratio"),
+                              direction, rec.get("label"))
+        if reason:
+            parts.append(reason)
         if rec.get("folded"):
-            parts.append("▤ folded by budget")
+            parts.append("folded by budget")
         if rec.get("phase"):
             parts.append(str(rec["phase"]))
-        if rec.get("z_adj"):
-            try:
-                parts.append(f"z {float(rec['z_adj']):+.1f}")
-            except (TypeError, ValueError):
-                pass
-        if rec.get("rvol") is not None:
-            try:
-                parts.append(f"RVOL ×{float(rec['rvol']):.1f}")
-            except (TypeError, ValueError):
-                pass
         if rec.get("league"):
             parts.append(str(rec["league"]))
         return "  ·  ".join(parts)
@@ -289,6 +294,7 @@ class HistoryTab(QWidget):
         self._price_display_fn = price_display_fn
         self._provider: Optional[Callable[..., List[Dict[str, Any]]]] = None
         self._rev_fn: Optional[Callable[[], int]] = None
+        self._mute_state_fn: Optional[Callable[[], dict]] = None
         self._records: List[Dict[str, Any]] = []
         self._signature: Optional[tuple] = None
         self._loader = IconLoader(self)
@@ -336,6 +342,10 @@ class HistoryTab(QWidget):
         self._provider = fn
         self._rev_fn = rev_fn
 
+    def set_mute_state(self, fn: Optional[Callable[[], dict]]) -> None:
+        """Live mute map (key -> until ts) so cards render an unmute toggle."""
+        self._mute_state_fn = fn
+
     def activate(self) -> None:
         self.refresh(force=True)
         self._timer.start()
@@ -364,7 +374,8 @@ class HistoryTab(QWidget):
             return
         self._signature = signature
         self._records = recs
-        self._rebuild()
+        mute_state = self._mute_state_fn() if self._mute_state_fn else {}
+        self._rebuild(mute_state)
 
     def _passes(self, rec: Dict[str, Any]) -> bool:
         needle = self._search.text().strip().lower()
@@ -383,14 +394,14 @@ class HistoryTab(QWidget):
                 return False
         return True
 
-    def _rebuild(self) -> None:
+    def _rebuild(self, mute_state: Optional[dict] = None) -> None:
         self._list.clear()
         display = self._price_display_fn()
         shown = 0
         for rec in reversed(self._records):            # newest first
             if not self._passes(rec):
                 continue
-            card = AlertHistoryCard(rec, self._loader, display)
+            card = AlertHistoryCard(rec, self._loader, display, mute_state=mute_state)
             card.muted.connect(lambda k, m: self.mute_requested.emit(k, m))
             item = QListWidgetItem(self._list)
             item.setSizeHint(QSize(0, card.height() + 2))

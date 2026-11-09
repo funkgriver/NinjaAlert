@@ -368,20 +368,20 @@ class NotificationOverlay(QWidget):
             self._meta_label.setText(self._meta_override)
             return
 
-        parts: List[str] = [get_cat(alert.game, alert.category).label]
-        if getattr(alert, "label", ""):
-            parts.append(friendly_status(getattr(alert, "label", "")))
-        if getattr(alert, "phase", ""):
-            parts.append(str(alert.phase))
-        if getattr(alert, "z_adj", 0.0):
-            parts.append(f"z {alert.z_adj:+.1f}")
+        from webhook import plain_reason
+        # plain-English "why it fired" instead of z/RVOL jargon; numbers in tooltip
+        reason = plain_reason(alert.pct, getattr(alert, "vol_ratio", None),
+                              getattr(alert, "supply_ratio", None),
+                              1 if alert.pct >= 0 else -1,
+                              getattr(alert, "label", ""))
+        parts: List[str] = [get_cat(alert.game, alert.category).label, reason, alert.league]
+        tip = (f"{friendly_status(getattr(alert, 'label', ''))} | phase {alert.phase or '-'} | "
+               f"z {alert.z_adj:+.1f} | RVOL x{(alert.vol_ratio or 1):.1f}")
         if alert.spark_total_change is not None:
-            parts.append(f"7d {alert.spark_total_change:+.1f}%")
-        if alert.vol_ratio is not None:
-            parts.append(f"RVOL ×{alert.vol_ratio:.1f}")
-        elif alert.list_count is not None:
-            parts.append(f"listings {format_number(alert.list_count)}")
-        parts.append(alert.league)
+            tip += f" · 7d {alert.spark_total_change:+.1f}%"
+        if alert.list_count is not None:
+            tip += f" · listings {format_number(alert.list_count)}"
+        self.setToolTip(tip)
         fm_meta = self._meta_label.fontMetrics()
         self._meta_label.setText(fm_meta.elidedText(
             "  ·  ".join(parts), Qt.TextElideMode.ElideRight, TOAST_WIDTH - 124))

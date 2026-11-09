@@ -230,6 +230,39 @@ class AlertJournal:
         return out
 
 
+def plain_reason(pct, rvol, supply_ratio, direction, label) -> str:
+    """Plain-English 'why this fired' line for toasts and History cards.
+    The z / RVOL / supply jargon stays in tooltips for power users."""
+    try:
+        pct = float(pct or 0.0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    rv = float(rvol) if isinstance(rvol, (int, float)) and rvol > 0 else None
+    up = (direction if direction else 1) >= 0
+    move = f"price {'up' if up else 'down'} {abs(pct):.0f}%"
+    vol = ""
+    if rv is not None:
+        if rv >= 3.0:
+            vol = f" on {rv:.0f}x the usual volume"
+        elif rv >= 1.5:
+            vol = " with elevated volume"
+        else:
+            vol = " on thin volume - could be a fake"
+    supply = ""
+    try:
+        if supply_ratio is not None and up and float(supply_ratio) < 0.5:
+            supply = "; listings drying up - possible buyout"
+    except (TypeError, ValueError):
+        pass
+    lab = str(label or "")
+    tail = ""
+    if "SUSPECT" in lab:
+        tail = " - likely manipulated, skip" if up else " - likely a dump scheme"
+    elif "AMBIGUOUS" in lab:
+        tail = " - worth a look"
+    return f"{move}{vol}{supply}{tail}"
+
+
 def digest_record(item, game: str, league: str,
                   icon: Optional[str] = None) -> Dict[str, Any]:
     """Journal payload for one item folded into a digest toast.
