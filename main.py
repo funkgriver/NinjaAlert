@@ -183,6 +183,7 @@ class NinjaAlertController(QObject):
         self._journal.rotate_if_large()            # keep the journal size-bounded
         self._webhook = WebhookSender(lambda: self._cfg)
         self._toasts = ToastManager(lambda: self._cfg, base)
+        self._toasts.item_muted.connect(self._on_item_muted)
 
         self._pollers: Dict[str, PollWorker] = {}
         self._worker: Optional[AnalysisWorker] = None
@@ -303,6 +304,7 @@ class NinjaAlertController(QObject):
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)
             self._settings.refresh_leagues_requested.connect(self._refresh_leagues)
+            self._settings.mute_requested.connect(self._on_item_muted)
             # the poller may have fetched leagues before the window existed
             for g, ids in self._leagues_cache.items():
                 self._settings.set_leagues(g, ids)
@@ -479,6 +481,11 @@ class NinjaAlertController(QObject):
         for k in stale:                              # category was never re-fetched
             del self._pending_confirms[k]
             log.info("confirm %s: expired unresolved", k)
+
+    def _on_item_muted(self, key: str, minutes: float) -> None:
+        log.info("item muted for %.0f min: %s", minutes, key)
+        if self._worker is not None:
+            self._worker.submit_mute(key, minutes)
 
     def _on_worker_note(self, text: str) -> None:
         log.info("engine: %s", text)

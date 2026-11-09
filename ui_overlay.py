@@ -195,6 +195,7 @@ class IconLoader(QObject):
 # --------------------------------------------------------------- one overlay
 class NotificationOverlay(QWidget):
     closed = pyqtSignal(object)
+    muted = pyqtSignal(str, float)          # key, minutes (one-click snooze)
 
     def __init__(
         self,
@@ -286,6 +287,18 @@ class NotificationOverlay(QWidget):
         self._meta_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         mid.addWidget(self._meta_label)
         content.addLayout(mid, stretch=1)
+
+        self._mute_btn = mute_btn = QToolButton()
+        mute_btn.setText("🔇")
+        mute_btn.setToolTip("Mute this item for 30 minutes")
+        mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        mute_btn.setStyleSheet(
+            "QToolButton { color: #9aa4b2; background: transparent; border: none;"
+            " font-size: 12px; padding: 2px 4px; }"
+            "QToolButton:hover { color: #ffffff; }"
+        )
+        mute_btn.clicked.connect(self._mute_clicked)
+        content.addWidget(mute_btn, alignment=Qt.AlignmentFlag.AlignTop)
 
         close_btn = QToolButton()
         close_btn.setText("✕")
@@ -387,6 +400,13 @@ class NotificationOverlay(QWidget):
         self._update_progress()
 
     # ------------------------------------------------------------ behaviors
+    def _mute_clicked(self) -> None:
+        try:
+            self.muted.emit(self._alert.key, 30.0)
+        except Exception:
+            log.exception("mute emit failed")
+        self.dismiss()
+
     def _on_tick(self) -> None:
         if self._hold.isActive():
             self._remaining = max(0.0, self._remaining - self._tick.interval() / 1000.0)
@@ -829,6 +849,8 @@ class DigestOverlay(QWidget):
 class ToastManager(QObject):
     """Shows alert popups, keeps them stacked in the configured corner."""
 
+    item_muted = pyqtSignal(str, float)     # key, minutes (from a toast 🔇)
+
     def __init__(self, config_getter: Callable[[], object], base_dir: str,
                  parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -857,9 +879,13 @@ class ToastManager(QObject):
             price_display=getattr(cfg.alerts, "price_display", "both"),
         )
         overlay.closed.connect(self._on_closed)
+        overlay.muted.connect(self._on_muted)
         self._active.append(overlay)
         self._position(overlay, len(self._active) - 1)
         overlay.show_at(self._slot_pos(len(self._active) - 1), float(cfg.overlay.opacity))
+
+    def _on_muted(self, key: str, minutes: float) -> None:
+        self.item_muted.emit(key, minutes)
 
     def show_digest(self, digest, game: str, league: str) -> None:
         """Interactive amber summary for anomalies folded by the alert budget:

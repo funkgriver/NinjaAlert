@@ -83,6 +83,9 @@ class AnalysisWorker(QThread):
     def reset_game(self, game: str) -> None:
         self._q.put(("reset", game))
 
+    def submit_mute(self, key: str, minutes: float) -> None:
+        self._q.put(("mute", key, float(minutes)))
+
     def stop(self) -> None:
         self._q.put(("stop",))
 
@@ -119,6 +122,8 @@ class AnalysisWorker(QThread):
                     self._handle_reset(pipelines, basics, item[1])
                 elif cmd == "stop":
                     running = False
+                elif cmd == "mute":
+                    self._handle_mute(item[1], item[2])
             except Exception:          # never let the thread die
                 log.exception("analysis worker command failed (%s)", cmd)
             try:
@@ -220,6 +225,13 @@ class AnalysisWorker(QThread):
         basics[game].reset()
         self._scenarios.reset()
         log.info("engines reset (%s)", game)
+
+    def _handle_mute(self, key: str, minutes: float) -> None:
+        for game in GAMES:
+            pipeline = pipelines.get(game)
+            if pipeline is not None:
+                pipeline.governor.mute(key, minutes)
+        log.info("muted %s for %.0f min", key, minutes)
 
     def _ensure_pipeline(self, pipelines, game: str) -> Optional[AnalysisPipeline]:
         if pipelines.get(game) is not None:

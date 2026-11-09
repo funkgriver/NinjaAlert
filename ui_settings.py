@@ -262,7 +262,8 @@ def _wrap_scroll(page: QWidget) -> QWidget:
 
 
 class SettingsWindow(QWidget):
-    settings_saved = pyqtSignal(object)       # new Config
+    settings_saved = pyqtSignal(object)
+    mute_requested = pyqtSignal(str, float)       # new Config
     check_now_requested = pyqtSignal()
     pause_toggled = pyqtSignal(bool)
     refresh_leagues_requested = pyqtSignal(str)
@@ -515,6 +516,7 @@ class SettingsWindow(QWidget):
         self._tabs.addTab(_wrap_scroll(self._build_scenarios_tab()), "Scenarios")
         self._tabs.addTab(_wrap_scroll(self._build_status_tab()), "Status")
         self._history = HistoryTab(lambda: self._cfg.alerts.price_display)
+        self._history.mute_requested.connect(self.mute_requested.emit)
         self._tabs.addTab(self._history, "History")
         root.addWidget(self._tabs, stretch=1)
 
