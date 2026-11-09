@@ -1302,7 +1302,19 @@ def test_features() -> None:
         finally:
             sender2.stop()
 
-        # ---- alert journal history read ----
+        # ---- click-through: every category must resolve past the fallback ----
+        from categories import CATEGORIES
+        from ui_history import build_site_url
+        bad = []
+        for game, cats in CATEGORIES.items():
+            for cid, cat in cats.items():
+                rec = {"game": game, "league": "Allflame", "category":
+                       f"{game}:{cat.source}:{cid}", "details_id": "det-x"}
+                url = build_site_url(rec) or ""
+                if "/economy/allflame/" not in url:
+                    bad.append(f"{game}:{cid}")
+        check("click: all registry categories resolve to real pages",
+              not bad, str(bad[:6]))
         from webhook import AlertJournal
         with tempfile.TemporaryDirectory() as tdj:
             j = AlertJournal(str(Path(tdj) / "alerts.jsonl"))
@@ -1598,6 +1610,12 @@ def test_qt() -> None:
         check("qt: history card mute emits",
               len(hist_muted) == 1 and hist_muted[0][0] == rec["key"],
               str(hist_muted))
+        settings_muted: list = []
+        settings.mute_requested.connect(lambda k, m: settings_muted.append((k, m)))
+        QTest.mouseClick(hist_card._mute_btn, _QtQ.MouseButton.LeftButton)
+        check("mute: two-hop relay card -> history -> settings",
+              len(settings_muted) == 1 and settings_muted[0][0] == rec["key"],
+              str(settings_muted))
         settings._history._search.setText("mirror-of-kalandra")
         settings._history._rebuild()
         check("qt: history filter yields empty state",
