@@ -38,6 +38,8 @@ LEAGUE_REFRESH_SECONDS = 6 * 3600
 # balance patches - sweep often enough to catch those within hours
 SECTION_DISCOVERY_SECONDS = 6 * 3600      # site-index section sweep cadence
 AUTO_CLEAR_STRIKES = 6                    # consecutive 404 cycles -> report for removal
+LEAGUE_AUTO_CLEAR_HOLD = 60 * 60          # grace after a league flip: new-league
+                                          # sections 404 while poe.ninja builds them
 
 
 class PollWorker(QThread):
@@ -68,6 +70,7 @@ class PollWorker(QThread):
         self._last_discovery = 0.0
         self._wake_at: Optional[float] = None    # one early re-poll deadline
         self._wake_cats: set = set()             # categories the re-poll scopes to
+        self._auto_clear_hold = 0.0              # patch-day grace deadline
         self._last_current_league: str = ""
 
     # --------------------------------------------------- control (GUI thread)
@@ -154,8 +157,12 @@ class PollWorker(QThread):
             if self._last_current_league:
                 # patch/league rollover: the section set may have changed -
                 # sweep the site index again on the next cycle instead of
-                # waiting out the discovery cadence
+                # waiting out the discovery cadence; and new-league sections
+                # 404 while poe.ninja builds them - hold the auto-clear for
+                # an hour and reset old-league 404 strikes
                 self._last_discovery = 0.0
+                self._auto_clear_hold = time.time() + LEAGUE_AUTO_CLEAR_HOLD
+                self._unavail_strikes.clear()
                 self.note.emit(f"New league detected: {current}")
             self._last_current_league = current
 
@@ -227,6 +234,8 @@ class PollWorker(QThread):
     def _maybe_autoclear(self) -> None:
         """Report watched categories that keep answering 404 (controller
         removes them from config; the poller skips them from then on)."""
+        if time.time() < self._auto_clear_hold:
+            return                     # patch-day grace: new sections 404 by nature
         for cat_id, strikes in list(self._unavail_strikes.items()):
             if strikes < AUTO_CLEAR_STRIKES or cat_id in self._auto_cleared:
                 continue
