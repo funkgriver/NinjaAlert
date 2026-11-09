@@ -346,7 +346,10 @@ class SettingsWindow(QWidget):
         league_row.addWidget(self._auto_league)
         self._league_combo = QComboBox()
         self._league_combo.setMinimumWidth(170)
-        self._league_combo.setEnabled(not self._cfg.game_cfg(self._editing_game).league_auto)
+        self._league_combo.setEnabled(True)   # usable in Auto mode too
+        self._league_combo.setToolTip(
+            "Auto mode: follows poe.ninja's current league. "
+            "Pick a league to pin it manually (Auto unchecks).")
         league_row.addWidget(self._league_combo, stretch=1)
         self._refresh_btn = QPushButton("⟳")
         self._refresh_btn.setFixedWidth(34)
@@ -827,15 +830,20 @@ class SettingsWindow(QWidget):
         self._load_game_fields(game)
 
     def _on_auto_changed(self, state) -> None:
-        self._league_combo.setEnabled(self._auto_league.isChecked())
         if self._auto_league.isChecked():
             # ask poller for a fresh list; current league will land on top
             self.refresh_leagues_requested.emit(self._editing_game)
 
     def _on_league_picked(self, text: str) -> None:
-        if not self._auto_league.isChecked():
-            data = self._league_combo.currentData()
-            self._cfg.game_cfg(self._editing_game).league = data or text
+        data = self._league_combo.currentData()
+        if not data:
+            return                          # separator row (disabled, not pickable)
+        if self._auto_league.isChecked():
+            # a manual pick IS the intent to pin: switch out of Auto mode
+            self._auto_league.blockSignals(True)
+            self._auto_league.setChecked(False)
+            self._auto_league.blockSignals(False)
+        self._cfg.game_cfg(self._editing_game).league = data
 
     def _fill_league_combo(self) -> None:
         game = self._editing_game
@@ -875,7 +883,6 @@ class SettingsWindow(QWidget):
                 model.item(r).setEnabled(False)   # separators are not choices
         idx = self._league_combo.findData(current)
         self._league_combo.setCurrentIndex(max(idx, 0))
-        self._league_combo.setEnabled(not self._auto_league.isChecked())
         self._league_combo.blockSignals(False)
 
     def _fill_categories(self, game: str) -> None:

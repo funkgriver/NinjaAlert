@@ -190,6 +190,7 @@ class NinjaAlertController(QObject):
         self._meta_league: Dict[str, str] = {}       # league seen in latest meta per game
         self._pending_confirms: Dict[str, dict] = {} # key -> alert ref awaiting re-scan (C9)
         self._current_league: Dict[str, str] = {}    # league from leagues endpoint
+        self._leagues_cache: Dict[str, List[str]] = {}   # last ids per game (UI fill)
         self._runtime_new_leagues: set = set()       # rollovers detected while running
         self._poller_states: Dict[str, str] = {}
         self._scan_done: Dict[str, int] = {}           # per-game cycle progress
@@ -302,6 +303,9 @@ class NinjaAlertController(QObject):
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)
             self._settings.refresh_leagues_requested.connect(self._refresh_leagues)
+            # the poller may have fetched leagues before the window existed
+            for g, ids in self._leagues_cache.items():
+                self._settings.set_leagues(g, ids)
         self._settings.set_state(self._aggregate_state(), self._last_detail)
         self._settings.show()
         self._settings.raise_()
@@ -569,6 +573,7 @@ class NinjaAlertController(QObject):
         if not league_ids:
             return
         current = str(league_ids[0])
+        self._leagues_cache[game] = [str(l) for l in league_ids]
         previous = self._current_league.get(game)
         if previous and previous != current:
             # runtime rollover: record first-seen today and reseed
