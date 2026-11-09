@@ -1542,6 +1542,17 @@ def test_qt() -> None:
         check("leagues: stale saved league falls back to the current one",
               combo.currentData() == "Forbidden Rites",
               str(combo.currentData()))
+        check("leagues: combo usable while Auto is on",
+              combo.isEnabled() is True
+              and combo.itemText(0).startswith("Forbidden Rites"))
+        combo.setCurrentIndex(1)              # "Runes of Aldur" - manual pin
+        check("leagues: manual pick unchecks Auto and pins the league",
+              settings._auto_league.isChecked() is False
+              and settings._cfg.game_cfg("poe2").league == "Runes of Aldur",
+              f"auto={settings._auto_league.isChecked()}, "
+              f"league={settings._cfg.game_cfg('poe2').league}")
+        settings._auto_league.setChecked(True)   # back to Auto
+        check("leagues: combo stays enabled in Auto mode", combo.isEnabled() is True)
         settings._cfg.game_cfg("poe2").league = ""
         settings._editing_game = "poe1"
 
