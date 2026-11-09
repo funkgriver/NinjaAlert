@@ -426,6 +426,21 @@ def test_advanced() -> None:
         check("governor: dedup keeps highest priority",
               len(shown3) == 1 and shown3[0] is stronger)
 
+        # unmute round-trip (QA: user asked for removable mutes)
+        gov_m = AlertGovernor(gov_cfg)
+        gov_m.mute(anoms[0].key, 30.0)
+        shown_m, dig_m = gov_m.decide([anoms[0]])
+        check("mute: muted key suppressed (no shown, no digest)",
+              len(shown_m) == 0 and dig_m is None,
+              f"shown={len(shown_m)}, digest={dig_m.count if dig_m else None}")
+        gov_m.unmute(anoms[0].key)
+        shown_m2, _ = gov_m.decide([anoms[0]])
+        check("mute: unmute restores alerts immediately", len(shown_m2) == 1,
+              str(len(shown_m2)))
+        gov_m.mute(anoms[0].key, 30.0)
+        gov_m.reset()
+        check("mute: reset clears the mute store", not gov_m._muted)
+
         # ---- 4g-mute. one-click snooze (QA) --------------------------------
         gov_m = AlertGovernor(gov_cfg)
         gov_m.mute(anoms[0].key, 30.0)
@@ -1302,6 +1317,16 @@ def test_features() -> None:
         finally:
             sender2.stop()
 
+        # plain_reason: human status lines (QA: user feedback)
+        from webhook import plain_reason
+        r1 = plain_reason(45.0, 5.0, None, 1, "ORGANIC")
+        r2 = plain_reason(-18.0, 1.2, None, -1, "AMBIGUOUS")
+        r3 = plain_reason(30.0, 2.0, 0.4, 1, "SUSPECT")
+        check("reason: plain lines describe the move in words",
+              "up 45%" in r1 and "5x the usual volume" in r1
+              and "down 18%" in r2 and "thin volume" in r2
+              and "buyout" in r3 and "manipulated" in r3,
+              f"{r1} | {r2} | {r3}")
         # ---- click-through: every category must resolve past the fallback ----
         from categories import CATEGORIES
         from ui_history import build_site_url
@@ -1359,7 +1384,7 @@ def test_features() -> None:
 
         from ui_settings import SCENARIO_PRESETS
         cfgsc = Config()
-        cfgsc.scenarios = [dict(SCENARIO_PRESETS[0][1]), dict(SCENARIO_PRESETS[2][1])]
+        cfgsc.scenarios = [dict(SCENARIO_PRESETS[0][2]), dict(SCENARIO_PRESETS[2][2])]
         cfgsc._sanitize()
         check("sections: presets sanitize cleanly",
               [s.name for s in cfgsc.scenarios] == ["Divine moves", "Volume burst"],
@@ -1610,6 +1635,15 @@ def test_qt() -> None:
         check("qt: history card mute emits",
               len(hist_muted) == 1 and hist_muted[0][0] == rec["key"],
               str(hist_muted))
+        settings._history.set_mute_state(lambda: {rec["key"]: time.time() + 1800})
+        settings._history.refresh(force=True)
+        mute_card = settings._history._list.itemWidget(settings._history._list.item(0))
+        check("history: muted item renders the unmute toggle",
+              mute_card is not None and mute_card._mute_btn.text() == "🔔"
+              and mute_card._is_muted is True,
+              f"btn={mute_card._mute_btn.text() if mute_card else None}")
+        settings._history.set_mute_state(lambda: {})
+        settings._history.refresh(force=True)
         settings_muted: list = []
         settings.mute_requested.connect(lambda k, m: settings_muted.append((k, m)))
         QTest.mouseClick(hist_card._mute_btn, _QtQ.MouseButton.LeftButton)

@@ -300,6 +300,8 @@ class NinjaAlertController(QObject):
             self._settings.set_status_provider(self._status_snapshot)
             self._settings.set_history_source(self._history_snapshot,
                                               lambda: self._journal.revision())
+            self._settings.set_mute_state(
+                lambda: self._worker.muted_map() if self._worker is not None else {})
             self._settings.settings_saved.connect(self._on_settings_saved)
             self._settings.check_now_requested.connect(self.check_now)
             self._settings.pause_toggled.connect(self._on_pause_toggled)

@@ -97,6 +97,7 @@ class AnalysisWorker(QThread):
     def run(self) -> None:
         try:
             pipelines, basics = self._build_engines()
+            self._pipelines_ref = pipelines        # for muted_map (GUI read)
         except Exception:
             # a dead worker means silently dead monitoring AND an unbounded
             # GUI-side queue - never let this loop die
@@ -230,8 +231,20 @@ class AnalysisWorker(QThread):
         for game in GAMES:
             pipeline = pipelines.get(game)
             if pipeline is not None:
-                pipeline.governor.mute(key, minutes)
-        log.info("muted %s for %.0f min", key, minutes)
+                if minutes and minutes > 0:
+                    pipeline.governor.mute(key, minutes)
+                else:
+                    pipeline.governor.unmute(key)
+        log.info("%s %s ( %.0f min )", "unmuted" if not minutes else "muted", key, minutes)
+
+    def muted_map(self) -> Dict[str, float]:
+        """key -> mute-until ts, merged from both governors (GUI read)."""
+        out: Dict[str, float] = {}
+        pipelines = getattr(self, "_pipelines_ref", None) or {}
+        for pipeline in pipelines.values():
+            if pipeline is not None:
+                out.update(dict(pipeline.governor._muted))
+        return out
 
     def _ensure_pipeline(self, pipelines, game: str) -> Optional[AnalysisPipeline]:
         if pipelines.get(game) is not None:
