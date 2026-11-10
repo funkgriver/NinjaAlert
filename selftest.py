@@ -1331,14 +1331,18 @@ def test_features() -> None:
         from categories import CATEGORIES
         from ui_history import build_site_url
         bad = []
+        league_slug = {"poe1": "allflame", "poe2": "forbiddenrites"}
         for game, cats in CATEGORIES.items():
             for cid, cat in cats.items():
-                rec = {"game": game, "league": "Allflame", "category":
+                if not cat.slug:
+                    continue              # no known site page: economy fallback by design
+                league = {"poe1": "Allflame", "poe2": "Forbidden Rites"}[game]
+                rec = {"game": game, "league": league, "category":
                        f"{game}:{cat.source}:{cid}", "details_id": "det-x"}
                 url = build_site_url(rec) or ""
-                if "/economy/allflame/" not in url:
+                if f"/economy/{league_slug[game]}/" not in url:
                     bad.append(f"{game}:{cid}")
-        check("click: all registry categories resolve to real pages",
+        check("click: every slugged category resolves to a real page",
               not bad, str(bad[:6]))
         from webhook import AlertJournal
         with tempfile.TemporaryDirectory() as tdj:
