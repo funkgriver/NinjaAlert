@@ -125,6 +125,13 @@ def get_cat(game: str, cat_id: str) -> CatDef:
     return CATEGORIES[game][cat_id]
 
 
+def normalize_cat_id(raw: str) -> str:
+    """Whatever carried the category down the pipe (3-part cohort strings,
+    '#market'-suffixed keys, bare ids) -> the bare registry id."""
+    cid = str(raw).rsplit(":", 1)[-1]
+    return cid.split("#", 1)[0]
+
+
 def labels_for(game: str) -> Dict[str, str]:
     """Ordered {id: label} map for UI lists."""
     return {cid: c.label for cid, c in CATEGORIES[game].items()}

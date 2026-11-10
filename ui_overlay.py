@@ -37,7 +37,7 @@ from PyQt6.QtWidgets import (
 )
 
 from api_client import BASE_URL, FetchMeta, format_number, format_price
-from categories import get_cat
+from categories import get_cat, normalize_cat_id
 
 log = logging.getLogger("ninjaalert.overlay")
 
@@ -376,7 +376,9 @@ class NotificationOverlay(QWidget):
                               getattr(alert, "supply_ratio", None),
                               1 if alert.pct >= 0 else -1,
                               getattr(alert, "label", ""))
-        parts: List[str] = [get_cat(alert.game, alert.category).label, reason, alert.league]
+        parts: List[str] = [get_cat(alert.game,
+                                    normalize_cat_id(alert.category)).label,
+                            reason, alert.league]
         tip = (f"{friendly_status(getattr(alert, 'label', ''))} | phase {alert.phase or '-'} | "
                f"z {alert.z_adj:+.1f} | RVOL x{(alert.vol_ratio or 1):.1f}")
         if alert.spark_total_change is not None:
@@ -960,7 +962,7 @@ class ToastManager(QObject):
         """Best-effort poe.ninja page for the clicked popup."""
         game = alert.game
         league_slug = _league_slug(meta.league)
-        cat = get_cat(game, alert.category)
+        cat = get_cat(game, normalize_cat_id(alert.category))
         if league_slug and cat.slug:
             base = f"{BASE_URL}/{game}/economy/{league_slug}/{cat.slug}"
             if alert.details_id and cat.source == "item":
