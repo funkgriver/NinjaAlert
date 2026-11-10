@@ -1646,6 +1646,9 @@ def test_qt() -> None:
               mute_card is not None and mute_card._mute_btn.text() == "🔔"
               and mute_card._is_muted is True,
               f"btn={mute_card._mute_btn.text() if mute_card else None}")
+        check("history: muted card shows minutes-left marker",
+              "muted" in mute_card._meta_label.text(),
+              mute_card._meta_label.text())
         settings._history.set_mute_state(lambda: {})
         settings._history.refresh(force=True)
         settings_muted: list = []
@@ -1654,6 +1657,29 @@ def test_qt() -> None:
         check("mute: two-hop relay card -> history -> settings",
               len(settings_muted) == 1 and settings_muted[0][0] == rec["key"],
               str(settings_muted))
+
+        # market-move anomalies must not crash the click-through (KeyError regression)
+        from categories import normalize_cat_id
+        check("normalize: 3-part / #market / bare -> bare id",
+              normalize_cat_id("poe1:item:UniqueWeapon") == "UniqueWeapon"
+              and normalize_cat_id("poe1:item:UniqueWeapon#market") == "UniqueWeapon"
+              and normalize_cat_id("Essence") == "Essence")
+        from ui_overlay import ToastManager as _TM
+        class _FakeMarketAlert:
+            game = "poe1"; category = "poe1:item:UniqueWeapon"
+            key = "poe1:item:UniqueWeapon#market"; details_id = None
+        fm = FetchMeta(game="poe1", league="Allflame", category="UniqueWeapon",
+                       source="item", primary="chaos")
+        murl = _TM._site_url_for(_FakeMarketAlert(), fm)
+        check("click: market anomaly toast URL resolves to the category page",
+              murl and murl.endswith("/unique-weapons"), str(murl))
+        # visible muted marker on the card
+        settings._history.set_mute_state(lambda: {rec["key"]: __import__("time").time() + 1800})
+        settings._history.refresh(force=True)
+        mute_card = settings._history._list.itemWidget(settings._history._list.item(0))
+        check("history: muted card shows minutes-left marker",
+              mute_card is not None and "muted" in mute_card._meta_label.text(),
+              mute_card._meta_label.text() if mute_card else "?")
         settings._history._search.setText("mirror-of-kalandra")
         settings._history._rebuild()
         check("qt: history filter yields empty state",

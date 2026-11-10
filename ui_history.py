@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
 )
 
 from api_client import BASE_URL, price_meta, format_price
-from categories import get_cat
+from categories import get_cat, normalize_cat_id
 from ui_overlay import IconLoader, TOAST_HEIGHT, _league_slug, friendly_status
 
 log = logging.getLogger("ninjaalert.history")
@@ -63,9 +63,8 @@ def build_site_url(rec: Dict[str, Any]) -> Optional[str]:
     if not game:
         return None
     league = str(rec.get("league") or "")
-    # journal records carry the full cohort ("<game>:<source>:<type>");
-    # get_cat expects the bare category id
-    cat_id = str(rec.get("category") or "").rsplit(":", 1)[-1]
+    from categories import normalize_cat_id
+    cat_id = normalize_cat_id(rec.get("category") or "")
     try:
         cat = get_cat(game, cat_id)
     except Exception:
@@ -147,7 +146,12 @@ class AlertHistoryCard(QFrame):
         price.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         mid.addWidget(price)
 
-        meta = QLabel(self._meta_text(rec))
+        meta_text = self._meta_text(rec)
+        muted_until = (self._mute_state or {}).get(str(rec.get("key") or ""))
+        if muted_until:
+            mins = max(0, int((float(muted_until) - time.time()) / 60))
+            meta_text += f"  ·  🔇 muted {mins}m"
+        self._meta_label = meta = QLabel(meta_text)
         meta.setObjectName("histMeta")
         meta.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         mid.addWidget(meta)
