@@ -124,7 +124,7 @@ class AnalysisWorker(QThread):
                 elif cmd == "stop":
                     running = False
                 elif cmd == "mute":
-                    self._handle_mute(item[1], item[2])
+                    self._handle_mute(pipelines, item[1], item[2])
             except Exception:          # never let the thread die
                 log.exception("analysis worker command failed (%s)", cmd)
             try:
@@ -227,7 +227,7 @@ class AnalysisWorker(QThread):
         self._scenarios.reset()
         log.info("engines reset (%s)", game)
 
-    def _handle_mute(self, key: str, minutes: float) -> None:
+    def _handle_mute(self, pipelines, key: str, minutes: float) -> None:
         for game in GAMES:
             pipeline = pipelines.get(game)
             if pipeline is not None:

@@ -171,6 +171,7 @@ class AlertHistoryCard(QFrame):
             "QToolButton { color: #9aa4b2; background: transparent; border: none;"
             " font-size: 11px; padding: 0 2px; }"
             "QToolButton:hover { color: #ffffff; }"
+            "QToolButton:pressed { color: #41d98c; }"
         )
         mute_btn.clicked.connect(
             lambda: self.muted.emit(str(rec.get("key") or ""),
