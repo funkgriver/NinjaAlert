@@ -296,6 +296,7 @@ class NotificationOverlay(QWidget):
             "QToolButton { color: #9aa4b2; background: transparent; border: none;"
             " font-size: 12px; padding: 2px 4px; }"
             "QToolButton:hover { color: #ffffff; }"
+            "QToolButton:pressed { color: #41d98c; }"
         )
         mute_btn.clicked.connect(self._mute_clicked)
         content.addWidget(mute_btn, alignment=Qt.AlignmentFlag.AlignTop)
@@ -307,6 +308,7 @@ class NotificationOverlay(QWidget):
             "QToolButton { color: #9aa4b2; background: transparent; border: none;"
             " font-size: 12px; padding: 2px 4px; }"
             "QToolButton:hover { color: #ffffff; }"
+            "QToolButton:pressed { color: #41d98c; }"
         )
         close_btn.clicked.connect(self.dismiss)
         content.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignTop)

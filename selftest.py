@@ -1904,6 +1904,23 @@ def test_worker() -> None:
                 check("worker: scenario hit carries anomaly + name",
                       hits[0].scenario == "any spike" and hits[0].anomaly.key)
 
+            # mute route: submit_mute -> worker cmd -> governor.mute applied
+            mute_key = "poe1:x:Currency:div0"
+            worker.submit_mute(mute_key, 30.0)
+            deadline = time.time() + 5
+            while time.time() < deadline and mute_key not in worker.muted_map():
+                app.processEvents()
+                time.sleep(0.05)
+            check("worker: mute command reaches the governor",
+                  mute_key in worker.muted_map(), str(worker.muted_map()))
+            worker.submit_mute(mute_key, 0.0)             # unmute variant
+            deadline = time.time() + 5
+            while time.time() < deadline and mute_key in worker.muted_map():
+                app.processEvents()
+                time.sleep(0.05)
+            check("worker: unmute command clears the mute",
+                  mute_key not in worker.muted_map(), str(worker.muted_map()))
+
             worker.apply_config(cfg)           # config command path
             worker.reset_game("poe1")          # rollover reset path
             worker.stop()
